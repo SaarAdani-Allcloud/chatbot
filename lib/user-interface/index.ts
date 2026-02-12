@@ -196,9 +196,11 @@ export class UserInterface extends Construct {
           "sh",
           "-c",
           [
-            // Remove lock + node_modules to force clean install with correct
-            // platform-specific optional deps (e.g. @rollup/rollup-linux-x64-gnu)
-            "rm -rf node_modules package-lock.json",
+            // Remove node_modules (may contain macOS binaries from local tryBundle)
+            // but KEEP package-lock.json for version consistency.
+            // npm install (not ci) re-resolves platform-specific optional deps
+            // like @rollup/rollup-linux-x64-gnu while respecting locked versions.
+            "rm -rf node_modules",
             "npm --cache /tmp/.npm install",
             `npm --cache /tmp/.npm run build`,
             "cp -aur /asset-input/dist/* /asset-output/",
