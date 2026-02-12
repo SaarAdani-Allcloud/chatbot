@@ -13,7 +13,11 @@ import * as fs from "fs";
 
 function calculateHash(paths: string[]): string {
   return paths.reduce((mh, p) => {
-    const dirs = fs.readdirSync(p);
+    // Sort entries to ensure deterministic hashing across platforms.
+    // fs.readdirSync() order varies on Linux ext4 (CodeBuild) vs macOS (APFS),
+    // which causes non-deterministic asset hashes and infinite CDK Pipeline
+    // self-mutation loops.
+    const dirs = fs.readdirSync(p).sort();
     const hash = calculateHash(
       dirs
         .filter((d) => fs.statSync(path.join(p, d)).isDirectory())

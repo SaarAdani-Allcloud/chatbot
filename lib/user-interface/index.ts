@@ -228,6 +228,10 @@ export class UserInterface extends Construct {
       // changing asset hashes across synth runs (which causes an infinite
       // self-mutation loop in CDK Pipelines).
       assetHashType: cdk.AssetHashType.SOURCE,
+      // Exclude build artifacts so they don't pollute the SOURCE hash.
+      // In CodeBuild, tryBundle's `npm ci` may fail partway through,
+      // leaving a partial node_modules that varies between runs.
+      exclude: ["node_modules", "dist"],
     });
 
     new s3deploy.BucketDeployment(this, "UserInterfaceDeployment", {
