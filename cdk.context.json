@@ -1,0 +1,51 @@
+{
+  "availability-zones:account=135808919017:region=il-central-1": [
+    "il-central-1a",
+    "il-central-1b",
+    "il-central-1c"
+  ],
+  "vpc-provider:account=135808919017:filter.vpc-id=vpc-0bee666b81ca89734:region=il-central-1:returnAsymmetricSubnets=true": {
+    "vpcId": "vpc-0bee666b81ca89734",
+    "vpcCidrBlock": "10.20.0.0/16",
+    "ownerAccountId": "135808919017",
+    "availabilityZones": [],
+    "subnetGroups": [
+      {
+        "name": "Private",
+        "type": "Private",
+        "subnets": [
+          {
+            "subnetId": "subnet-0ff16c4f5cdf49bed",
+            "cidr": "10.20.128.0/20",
+            "availabilityZone": "il-central-1a",
+            "routeTableId": "rtb-024fdfbbc585d05dd"
+          },
+          {
+            "subnetId": "subnet-06453b8fe50459fd0",
+            "cidr": "10.20.144.0/20",
+            "availabilityZone": "il-central-1b",
+            "routeTableId": "rtb-0eb71c2dea0a5d9b8"
+          }
+        ]
+      },
+      {
+        "name": "Public",
+        "type": "Public",
+        "subnets": [
+          {
+            "subnetId": "subnet-08145279e0b313fea",
+            "cidr": "10.20.0.0/20",
+            "availabilityZone": "il-central-1a",
+            "routeTableId": "rtb-024f974e46dfea9b5"
+          },
+          {
+            "subnetId": "subnet-027ce62a067101b3d",
+            "cidr": "10.20.16.0/20",
+            "availabilityZone": "il-central-1b",
+            "routeTableId": "rtb-024f974e46dfea9b5"
+          }
+        ]
+      }
+    ]
+  }
+}
