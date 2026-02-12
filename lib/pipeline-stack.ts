@@ -4,6 +4,7 @@ import * as codebuild from "aws-cdk-lib/aws-codebuild";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as pipelines from "aws-cdk-lib/pipelines";
 import { Construct } from "constructs";
 import { NagSuppressions } from "cdk-nag";
@@ -119,6 +120,20 @@ export class PipelineStack extends cdk.Stack {
         computeType: codebuild.ComputeType.LARGE,
         privileged: true, // required for Docker-in-Docker (Lambda layer bundling)
       },
+      // Grant EC2 describe permissions for VPC lookups during cdk synth
+      rolePolicy: [
+        new iam.PolicyStatement({
+          actions: [
+            "ec2:DescribeVpcs",
+            "ec2:DescribeSubnets",
+            "ec2:DescribeRouteTables",
+            "ec2:DescribeSecurityGroups",
+            "ec2:DescribeAvailabilityZones",
+            "ec2:DescribeVpcEndpoints",
+          ],
+          resources: ["*"],
+        }),
+      ],
       ...(vpc
         ? {
             vpc,
