@@ -46,6 +46,10 @@ export class Layer extends Construct {
         securityOpt: "no-new-privileges:true",
         network: "host",
       },
+      // Use SOURCE hash to prevent non-deterministic Docker output from
+      // changing asset hashes across synth runs (which causes an infinite
+      // self-mutation loop in CDK Pipelines).
+      assetHashType: cdk.AssetHashType.SOURCE,
     });
 
     const layer = new lambda.LayerVersion(this, "Layer", {
@@ -101,6 +105,10 @@ export class CaCertLayer extends Construct {
         securityOpt: "no-new-privileges:true",
         network: "host",
       },
+      // Use SOURCE hash to prevent non-deterministic Docker output from
+      // changing asset hashes across synth runs (which causes an infinite
+      // self-mutation loop in CDK Pipelines).
+      assetHashType: cdk.AssetHashType.SOURCE,
     });
 
     const layer = new lambda.LayerVersion(this, "CaCertLayer", {

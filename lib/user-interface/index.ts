@@ -224,6 +224,10 @@ export class UserInterface extends Construct {
           },
         },
       },
+      // Use SOURCE hash to prevent non-deterministic Docker output from
+      // changing asset hashes across synth runs (which causes an infinite
+      // self-mutation loop in CDK Pipelines).
+      assetHashType: cdk.AssetHashType.SOURCE,
     });
 
     new s3deploy.BucketDeployment(this, "UserInterfaceDeployment", {
