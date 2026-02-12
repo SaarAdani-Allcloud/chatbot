@@ -18,11 +18,14 @@ export class ChatBotStage extends cdk.Stage {
   constructor(scope: Construct, id: string, props: ChatBotStageProps) {
     super(scope, id, props);
 
+    // Explicitly set stackName to match the direct-deploy stack name,
+    // so the pipeline updates the existing stack instead of creating a new one.
     const stack = new AwsGenAILLMChatbotStack(
       this,
       `${props.config.prefix}GenAIChatBotStack`,
       {
         config: props.config,
+        stackName: `${props.config.prefix}GenAIChatBotStack`,
       }
     );
 

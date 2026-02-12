@@ -19,10 +19,15 @@ const env = {
   account: process.env.CDK_DEFAULT_ACCOUNT,
 };
 
-if (config.pipeline?.enabled) {
+// CDK_PIPELINE_DEPLOY is set by the pipeline's deploy CodeBuild step.
+// When set, we skip creating the PipelineStack and instead create the
+// ChatBot stack directly — producing the exact same template as a local deploy.
+const isPipelineDeployStep = process.env.CDK_PIPELINE_DEPLOY === "true";
+
+if (config.pipeline?.enabled && !isPipelineDeployStep) {
   // ============================================
-  // Pipeline mode: deploy a self-mutating CI/CD pipeline
-  // The pipeline deploys the ChatBot stack via a CDK Stage.
+  // Pipeline mode: deploy the CI/CD pipeline stack itself.
+  // Run locally: npx cdk deploy <prefix>ChatBotPipelineStack
   // ============================================
   console.log("\n🔄 Pipeline mode: deploying CI/CD pipeline stack\n");
 
@@ -32,8 +37,10 @@ if (config.pipeline?.enabled) {
   });
 } else {
   // ============================================
-  // Direct deploy mode: deploy the ChatBot stack directly
-  // This is the original behavior (cdk deploy from local machine)
+  // Direct deploy mode: deploy the ChatBot stack directly.
+  // Used for:
+  //   1. Local cdk deploy without pipeline (pipeline.enabled = false)
+  //   2. Pipeline's deploy step (CDK_PIPELINE_DEPLOY = true)
   // ============================================
   console.log("\n🚀 Direct deploy mode: deploying ChatBot stack directly\n");
 
