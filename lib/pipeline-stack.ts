@@ -120,20 +120,6 @@ export class PipelineStack extends cdk.Stack {
         computeType: codebuild.ComputeType.LARGE,
         privileged: true, // required for Docker-in-Docker (Lambda layer bundling)
       },
-      // Grant EC2 describe permissions for VPC lookups during cdk synth
-      rolePolicy: [
-        new iam.PolicyStatement({
-          actions: [
-            "ec2:DescribeVpcs",
-            "ec2:DescribeSubnets",
-            "ec2:DescribeRouteTables",
-            "ec2:DescribeSecurityGroups",
-            "ec2:DescribeAvailabilityZones",
-            "ec2:DescribeVpcEndpoints",
-          ],
-          resources: ["*"],
-        }),
-      ],
       ...(vpc
         ? {
             vpc,
@@ -190,12 +176,21 @@ export class PipelineStack extends cdk.Stack {
     }
 
     // ============================================
-    // 6. Pipeline output
+    // 6. Materialize pipeline & attach managed policies
     // ============================================
-    // Note: pipeline.pipeline is not available until buildPipeline() is called
-    // (which happens lazily during synth), so we use the known pipeline name.
+    // buildPipeline() must be called after all stages are added,
+    // so we can access the underlying CodeBuild project roles.
+    pipeline.buildPipeline();
+
+    // Vpc.fromLookup during cdk synth needs broad EC2 read-only access
+    // (DescribeVpcs, DescribeSubnets, DescribeRouteTables, DescribeVpnGateways, etc.)
+    const ec2ReadOnly = iam.ManagedPolicy.fromAwsManagedPolicyName(
+      "AmazonEC2ReadOnlyAccess"
+    );
+    pipeline.synthProject.role?.addManagedPolicy(ec2ReadOnly);
+
     new cdk.CfnOutput(this, "PipelineName", {
-      value: `${props.config.prefix}-chatbot-pipeline`,
+      value: pipeline.pipeline.pipelineName,
       description: "CodePipeline name",
     });
 

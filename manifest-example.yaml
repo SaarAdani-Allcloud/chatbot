@@ -1,0 +1,630 @@
+# ================================================================================
+# DEPLOYMENT MANIFEST EXAMPLE - AWS GenAI LLM Chatbot
+# ================================================================================
+#
+# This file shows ALL available parameters that can be configured in the
+# deployment manifest. Copy this file to `deployment-manifest.yaml` and
+# customize the values for your deployment.
+#
+# How it works:
+# - Values in deployment-manifest.yaml OVERRIDE values in config.json
+# - Only include parameters you want to change
+# - The `prefix` parameter is REQUIRED, all others are optional
+#
+# Priority: deployment-manifest.yaml > config.json > defaults
+#
+# ================================================================================
+
+
+# ================================================================================
+# CORE DEPLOYMENT SETTINGS
+# ================================================================================
+
+# ----------------------------------------
+# prefix (REQUIRED)
+# ----------------------------------------
+# The primary identifier for this deployment. Used as a prefix for all
+# AWS resource names (S3 buckets, Lambda functions, DynamoDB tables, etc.)
+#
+# Constraints:
+#   - REQUIRED field
+#   - 1-16 characters
+#   - Must start with a letter
+#   - Only letters, numbers, and hyphens allowed
+#
+# Example: "prod-chatbot", "dev-cb", "mycompany"
+prefix: "my-chatbot"
+
+# ----------------------------------------
+# enableWaf (optional)
+# ----------------------------------------
+# Enable AWS WAF (Web Application Firewall) to protect the application
+# against common web exploits like SQL injection and XSS attacks.
+#
+# Recommended: true for production environments
+# Default: true (in config.json)
+#
+enableWaf: true
+
+# ----------------------------------------
+# createCMKs (optional)
+# ----------------------------------------
+# Create KMS Customer Managed Keys (CMKs) for data encryption at rest.
+# When enabled, uses your own encryption keys instead of AWS-managed keys.
+# Required for BYOK (Bring Your Own Key) encryption compliance.
+#
+# Note: Increases cost slightly due to KMS key charges
+# Default: false
+#
+createCMKs: false
+
+# ----------------------------------------
+# advancedMonitoring (optional)
+# ----------------------------------------
+# Enable enhanced monitoring capabilities:
+#   - Amazon CloudWatch custom metrics
+#   - CloudWatch alarms for critical thresholds
+#   - AWS X-Ray distributed tracing
+#
+# Recommended: true for production environments
+# Default: false
+#
+advancedMonitoring: true
+
+
+# ================================================================================
+# LOGGING CONFIGURATION
+# ================================================================================
+
+# ----------------------------------------
+# disableS3AccessLogs (optional)
+# ----------------------------------------
+# Disable S3 server access logging for all buckets created by this solution.
+#
+# When to use:
+#   - Set to true if you're using CloudTrail data events for S3 logging
+#   - CloudTrail provides more detailed logging than S3 server access logs
+#   - Avoids duplicate logging and reduces storage costs
+#
+# Default: false (S3 access logs are enabled)
+#
+disableS3AccessLogs: true
+
+# ----------------------------------------
+# logArchiveBucketName (optional)
+# ----------------------------------------
+# Name of a centralized S3 bucket for ALB access logs (cross-account supported).
+# When specified, ALB access logs are written to:
+#   s3://<logArchiveBucketName>/<prefix>/alb-logs/
+#
+# Prerequisites:
+#   - Bucket must already exist
+#   - Bucket policy must allow ALB to write logs
+#   - For cross-account: bucket must be in the same region
+#
+# Constraints:
+#   - 3-63 characters
+#   - Lowercase letters, numbers, dots, and hyphens
+#   - Must start and end with letter or number
+#
+# Leave empty or omit to create a dedicated log bucket for this deployment
+#
+logArchiveBucketName: "company-centralized-logs-bucket"
+
+
+# ================================================================================
+# WEBSITE/UI CONFIGURATION
+# ================================================================================
+
+# ----------------------------------------
+# privateWebsite (optional)
+# ----------------------------------------
+# Deploy the chatbot as a private website, accessible only within a VPC
+# via VPC endpoints. No public internet access.
+#
+# When true:
+#   - No CloudFront distribution is created
+#   - Access only through VPC endpoints (execute-api)
+#   - Requires VPC configuration (see vpc section below)
+#
+# When false:
+#   - Public website via CloudFront
+#   - Accessible from the internet
+#
+# Default: false
+#
+privateWebsite: true
+
+# ----------------------------------------
+# certificate (optional)
+# ----------------------------------------
+# ARN of an ACM (AWS Certificate Manager) certificate for HTTPS.
+#
+# For private website (il-central-1):
+#   - Certificate must be in the same region (il-central-1)
+#
+# For public website with CloudFront:
+#   - Certificate MUST be in us-east-1 (CloudFront requirement)
+#
+# Format: arn:aws:acm:<region>:<account-id>:certificate/<certificate-id>
+#
+# Leave empty to use the default CloudFront certificate (*.cloudfront.net)
+#
+certificate: "arn:aws:acm:il-central-1:123456789012:certificate/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+# ----------------------------------------
+# domain (optional)
+# ----------------------------------------
+# Custom domain name for the chatbot website.
+# Requires a matching ACM certificate (see certificate above).
+#
+# After deployment, create a DNS record (CNAME or ALIAS) pointing to:
+#   - Private website: The ALB DNS name (from stack outputs)
+#   - Public website: The CloudFront distribution domain
+#
+# Format: Valid domain name (e.g., chat.example.com)
+#
+domain: "chatbot.company.com"
+
+
+# ================================================================================
+# VPC/NETWORK CONFIGURATION
+# ================================================================================
+#
+# Configure VPC settings for deploying Lambda functions and other resources
+# in your existing VPC. Required for private website deployments.
+#
+# All VPC parameters are optional. If vpcId is not provided, a new VPC is created.
+#
+
+vpc:
+  # ----------------------------------------
+  # vpcId (optional)
+  # ----------------------------------------
+  # ID of an existing VPC to deploy resources into.
+  # If not provided, a new VPC is created automatically.
+  #
+  # Format: vpc-<8-17 hex characters>
+  #
+  vpcId: "vpc-0123456789abcdef0"
+
+  # ----------------------------------------
+  # subnetIds (optional)
+  # ----------------------------------------
+  # List of subnet IDs where Lambda functions and other resources will be deployed.
+  # Must be private subnets with NAT Gateway or VPC endpoints for AWS services.
+  #
+  # Recommendation: Use at least 2 subnets in different Availability Zones
+  # for high availability.
+  #
+  # Format: subnet-<8-17 hex characters>
+  #
+  subnetIds:
+    - "subnet-0123456789abcdef0"
+    - "subnet-0123456789abcdef1"
+
+  # ----------------------------------------
+  # executeApiVpcEndpointId (optional)
+  # ----------------------------------------
+  # ID of an existing VPC endpoint for API Gateway (execute-api service).
+  # Required for private API Gateway access from within the VPC.
+  #
+  # If not provided and privateWebsite is true, a new endpoint is created.
+  #
+  # Format: vpce-<hex characters>
+  #
+  executeApiVpcEndpointId: "vpce-0123456789abcdef0"
+
+  # ----------------------------------------
+  # s3VpcEndpointId (optional)
+  # ----------------------------------------
+  # ID of an existing VPC endpoint for S3 (Interface endpoint, not Gateway).
+  # Required when providing s3VpcEndpointIps.
+  #
+  # Format: vpce-<hex characters>
+  #
+  s3VpcEndpointId: "vpce-0123456789abcdef1"
+
+  # ----------------------------------------
+  # s3VpcEndpointIps (optional)
+  # ----------------------------------------
+  # List of IP addresses for the S3 VPC interface endpoint (one per AZ).
+  # Used to configure private DNS for S3 access within the VPC.
+  #
+  # IMPORTANT: Must be provided together with s3VpcEndpointId
+  #
+  # How to find these IPs:
+  #   1. Go to VPC Console > Endpoints
+  #   2. Select your S3 interface endpoint
+  #   3. Look at the "Subnets" tab for the ENI IP addresses
+  #
+  # Format: Valid IPv4 addresses (x.x.x.x)
+  #
+  s3VpcEndpointIps:
+    - "10.0.1.100"
+    - "10.0.2.100"
+
+
+# ================================================================================
+# AUTHENTICATION - COGNITO FEDERATION (SSO)
+# ================================================================================
+#
+# Configure federated authentication with enterprise identity providers
+# using SAML 2.0 or OpenID Connect (OIDC).
+#
+# Choose ONE of:
+#   - SAML: For ADFS, Okta SAML, Azure AD SAML, etc.
+#   - OIDC: For Okta OIDC, Auth0, Azure AD OIDC, etc.
+#
+
+cognitoFederation:
+  # ----------------------------------------
+  # enabled (optional)
+  # ----------------------------------------
+  # Enable federated (SSO) authentication with an external identity provider.
+  # When false, users authenticate directly with Cognito username/password.
+  #
+  enabled: true
+
+  # ----------------------------------------
+  # autoRedirect (optional)
+  # ----------------------------------------
+  # Automatically redirect users to the identity provider login page,
+  # bypassing the Cognito hosted UI login screen.
+  #
+  # Recommended: true for seamless SSO experience
+  #
+  autoRedirect: true
+
+  # ----------------------------------------
+  # customProviderName (conditional)
+  # ----------------------------------------
+  # Name of the identity provider as it will appear in Cognito.
+  # REQUIRED when enabled is true and customProviderType is not "later".
+  #
+  # Constraints:
+  #   - 1-32 characters
+  #   - Alphanumeric, hyphens, and underscores only
+  #
+  customProviderName: "EnterpriseSSO"
+
+  # ----------------------------------------
+  # customProviderType (optional)
+  # ----------------------------------------
+  # Type of identity provider federation.
+  #
+  # Options:
+  #   - "SAML": SAML 2.0 federation (requires customSAML configuration)
+  #   - "OIDC": OpenID Connect federation (requires customOIDC configuration)
+  #   - "later": Skip provider setup; configure manually in AWS Console after deployment
+  #
+  customProviderType: "SAML"
+
+  # ----------------------------------------
+  # cognitoDomain (optional)
+  # ----------------------------------------
+  # Custom domain prefix for the Cognito hosted UI.
+  # The full domain will be: <cognitoDomain>.auth.<region>.amazoncognito.com
+  #
+  # If not provided, a domain is auto-generated.
+  #
+  # Constraints:
+  #   - Lowercase letters, numbers, and hyphens only
+  #   - Must be globally unique across all Cognito domains
+  #
+  cognitoDomain: "my-company-chatbot"
+
+  # ----------------------------------------
+  # customSAML (conditional)
+  # ----------------------------------------
+  # SAML 2.0 configuration. REQUIRED when customProviderType is "SAML".
+  #
+  customSAML:
+    # URL to the SAML metadata document from your identity provider.
+    # This XML document contains the IdP certificate and SSO endpoints.
+    #
+    # Examples:
+    #   - ADFS: https://adfs.company.com/FederationMetadata/2007-06/FederationMetadata.xml
+    #   - Okta: https://company.okta.com/app/<app-id>/sso/saml/metadata
+    #   - Azure AD: Found in Azure Portal > Enterprise Apps > SAML > Metadata URL
+    #
+    # IMPORTANT: Must be HTTPS
+    #
+    metadataDocumentUrl: "https://idp.company.com/saml/metadata.xml"
+
+  # ----------------------------------------
+  # customOIDC (conditional)
+  # ----------------------------------------
+  # OpenID Connect configuration. REQUIRED when customProviderType is "OIDC".
+  # Uncomment and configure if using OIDC instead of SAML.
+  #
+  # customOIDC:
+  #   # Client ID from your OIDC provider
+  #   # Found in your IdP's application settings
+  #   OIDCClient: "0oa1234567890abcdef"
+  #
+  #   # ARN of the Secrets Manager secret containing the OIDC client secret
+  #   # Create a secret with the client secret as plaintext value
+  #   # Format: arn:aws:secretsmanager:<region>:<account>:secret:<name>
+  #   OIDCSecret: "arn:aws:secretsmanager:il-central-1:123456789012:secret:oidc-client-secret-AbCdEf"
+  #
+  #   # OIDC Issuer URL from your identity provider
+  #   # Usually the base URL of your IdP
+  #   # IMPORTANT: Must be HTTPS
+  #   # Examples:
+  #   #   - Okta: https://company.okta.com
+  #   #   - Auth0: https://company.auth0.com
+  #   #   - Azure AD: https://login.microsoftonline.com/<tenant-id>/v2.0
+  #   OIDCIssuerURL: "https://login.company.com"
+
+
+# ================================================================================
+# BEDROCK GUARDRAILS
+# ================================================================================
+#
+# Configure Amazon Bedrock Guardrails for responsible AI content filtering.
+# Guardrails help prevent harmful, inappropriate, or off-topic content in
+# AI responses.
+#
+# Prerequisites:
+#   - Create a guardrail in the Bedrock console first
+#   - Note the guardrail identifier and version
+#
+
+bedrock:
+  guardrails:
+    # ----------------------------------------
+    # enabled (required in this section)
+    # ----------------------------------------
+    # Enable Bedrock Guardrails for content filtering.
+    #
+    enabled: true
+
+    # ----------------------------------------
+    # identifier (conditional)
+    # ----------------------------------------
+    # The guardrail identifier from the Bedrock console.
+    # REQUIRED when enabled is true.
+    #
+    # How to find:
+    #   1. Go to Bedrock Console > Guardrails
+    #   2. Select your guardrail
+    #   3. Copy the Guardrail ID (lowercase alphanumeric)
+    #
+    # Constraints:
+    #   - Lowercase alphanumeric characters only
+    #
+    identifier: "abc123def456"
+
+    # ----------------------------------------
+    # version (conditional)
+    # ----------------------------------------
+    # The guardrail version to use.
+    # REQUIRED when enabled is true.
+    #
+    # Options:
+    #   - "DRAFT": Use the draft version (for testing)
+    #   - "1", "2", etc.: Use a specific published version
+    #
+    version: "1"
+
+
+# ================================================================================
+# RAG CONFIGURATION (Retrieval Augmented Generation)
+# ================================================================================
+#
+# Configure RAG engines for document retrieval and knowledge augmentation.
+# RAG allows the chatbot to answer questions based on your organization's
+# documents and knowledge bases.
+#
+# Supported engines in manifest:
+#   - OpenSearch: Amazon OpenSearch Service for vector search
+#   - Knowledge Base: Amazon Bedrock Knowledge Bases
+#
+# Note: Aurora and Kendra engines are configured via config.json only.
+#
+
+rag:
+  # ----------------------------------------
+  # enabled (optional)
+  # ----------------------------------------
+  # Enable RAG capabilities for document-based Q&A.
+  # When enabled, at least one RAG engine must also be enabled.
+  #
+  enabled: true
+
+  # ----------------------------------------
+  # crossEncodingEnabled (optional)
+  # ----------------------------------------
+  # Enable cross-encoder models for improved relevance ranking.
+  # Cross-encoders re-rank search results for better accuracy.
+  #
+  # Note: Increases latency but improves answer quality.
+  #       Requires a cross-encoder model (see crossEncoderModels below).
+  #
+  crossEncodingEnabled: false
+
+  # ----------------------------------------
+  # engines
+  # ----------------------------------------
+  # Configure which RAG engines to enable.
+  # At least one engine must be enabled when rag.enabled is true.
+  #
+  engines:
+    # ----------------------------------------
+    # opensearch (optional)
+    # ----------------------------------------
+    # Amazon OpenSearch Service for vector similarity search.
+    # Creates an OpenSearch domain for storing and searching document embeddings.
+    #
+    opensearch:
+      enabled: true
+
+    # ----------------------------------------
+    # knowledgeBase (optional)
+    # ----------------------------------------
+    # Amazon Bedrock Knowledge Bases for managed RAG.
+    # Can connect to existing knowledge bases.
+    #
+    knowledgeBase:
+      enabled: true
+
+      # ----------------------------------------
+      # external (optional)
+      # ----------------------------------------
+      # List of existing Bedrock Knowledge Bases to connect.
+      # These knowledge bases must already exist in your account or
+      # a cross-account setup with proper IAM permissions.
+      #
+      external:
+        - # Friendly name for this knowledge base (displayed in UI)
+          # Constraints: Alphanumeric, hyphens, underscores only
+          name: "corporate-knowledge-base"
+
+          # Knowledge Base ID from Bedrock console
+          # Constraints: Exactly 10 uppercase alphanumeric characters
+          knowledgeBaseId: "ABCD123456"
+
+          # AWS region where the Knowledge Base is located
+          # Optional - defaults to deployment region
+          region: "il-central-1"
+
+          # Cross-account IAM role ARN (optional)
+          # Required if Knowledge Base is in a different AWS account
+          # The role must have bedrock:InvokeModel and bedrock:RetrieveAndGenerate permissions
+          # roleArn: "arn:aws:iam::999999999999:role/CrossAccountKBAccess"
+
+          # Enable/disable this knowledge base
+          enabled: true
+
+  # ----------------------------------------
+  # embeddingsModels (optional)
+  # ----------------------------------------
+  # Configure embedding models for converting text to vectors.
+  # At least one model with default: true should be specified.
+  #
+  # Available providers: "bedrock", "sagemaker", "openai"
+  #
+  embeddingsModels:
+    - provider: "bedrock"
+      name: "amazon.titan-embed-text-v1"
+      dimensions: 1536
+      default: true
+
+    # Additional embedding models (optional):
+    # - provider: "bedrock"
+    #   name: "cohere.embed-multilingual-v3"
+    #   dimensions: 1024
+    #   default: false
+
+  # ----------------------------------------
+  # crossEncoderModels (optional)
+  # ----------------------------------------
+  # Configure cross-encoder models for relevance ranking.
+  # Only used when crossEncodingEnabled is true.
+  #
+  # Note: SageMaker cross-encoders require SageMaker endpoint deployment
+  #
+  crossEncoderModels:
+    - provider: "sagemaker"
+      name: "cross-encoder/ms-marco-MiniLM-L-12-v2"
+      default: true
+
+
+# ================================================================================
+# CI/CD PIPELINE CONFIGURATION
+# ================================================================================
+#
+# Configure a self-mutating CI/CD pipeline using AWS CodePipeline and CodeCommit.
+#
+# How it works:
+#   1. Code is pushed to CodeCommit repository
+#   2. CodePipeline detects the change
+#   3. CDK synth runs to generate CloudFormation templates
+#   4. (Optional) Manual approval step
+#   5. CDK deploy updates the chatbot stack
+#
+# When pipeline.enabled is:
+#   - true: Creates a CodePipeline that auto-deploys on git push
+#   - false/absent: `cdk deploy` deploys the stack directly
+#
+
+pipeline:
+  # ----------------------------------------
+  # enabled (required in this section)
+  # ----------------------------------------
+  # Enable pipeline-based deployment.
+  # When true, creates a self-mutating CodePipeline.
+  #
+  enabled: true
+
+  # ----------------------------------------
+  # codecommit (required when enabled)
+  # ----------------------------------------
+  # CodeCommit repository configuration.
+  # Choose ONE of:
+  #   - existingRepositoryName: Use an existing repository
+  #   - createNew + newRepositoryName: Create a new repository
+  #
+  codecommit:
+    # Option A: Use an existing CodeCommit repository
+    # existingRepositoryName: "my-existing-chatbot-repo"
+
+    # Option B: Create a new CodeCommit repository
+    createNew: true
+    newRepositoryName: "aws-genai-llm-chatbot"
+
+    # Note: After deployment, push code manually to the repository.
+    # See the PostDeployInstructions stack output for git commands.
+
+  # ----------------------------------------
+  # branch (optional)
+  # ----------------------------------------
+  # Git branch to monitor for changes.
+  # Pipeline triggers on pushes to this branch.
+  #
+  # Default: "main"
+  #
+  branch: "main"
+
+  # ----------------------------------------
+  # requireApproval (optional)
+  # ----------------------------------------
+  # Require manual approval before deployment.
+  # When true:
+  #   - Pipeline pauses after CDK synth
+  #   - Reviewer must approve in CodePipeline console
+  #   - Or via email link (if notificationEmail is set)
+  #
+  # Recommended: true for production environments
+  # Default: true
+  #
+  requireApproval: true
+
+  # ----------------------------------------
+  # notificationEmail (optional)
+  # ----------------------------------------
+  # Email address for pipeline notifications.
+  # When provided:
+  #   - Creates an SNS topic for notifications
+  #   - Sends approval request emails with approve/reject links
+  #   - Sends pipeline success/failure notifications
+  #
+  # If omitted, approval is done via AWS Console only.
+  #
+  # Format: Valid email address
+  #
+  notificationEmail: "devops-team@company.com"
+
+
+# ================================================================================
+# END OF MANIFEST EXAMPLE
+# ================================================================================
+#
+# For detailed documentation on all parameters, see:
+#   docs/MANIFEST-PARAMETERS.md
+#
+# For the schema validation rules, see:
+#   bin/config-schema.ts
+#
+# ================================================================================
