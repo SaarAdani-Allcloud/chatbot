@@ -130,7 +130,7 @@ export class PipelineStack extends cdk.Stack {
 
     const pipeline = new pipelines.CodePipeline(this, "Pipeline", {
       pipelineName: `${props.config.prefix}-chatbot-pipeline`,
-      selfMutation: true,
+      selfMutation: false, // disabled to break self-mutation loop; re-enable once pipeline is stable
       dockerEnabledForSynth: true,
       dockerEnabledForSelfMutation: true,
       codeBuildDefaults,
