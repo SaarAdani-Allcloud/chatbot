@@ -196,6 +196,9 @@ export class UserInterface extends Construct {
           "sh",
           "-c",
           [
+            // Remove lock + node_modules to force clean install with correct
+            // platform-specific optional deps (e.g. @rollup/rollup-linux-x64-gnu)
+            "rm -rf node_modules package-lock.json",
             "npm --cache /tmp/.npm install",
             `npm --cache /tmp/.npm run build`,
             "cp -aur /asset-input/dist/* /asset-output/",
