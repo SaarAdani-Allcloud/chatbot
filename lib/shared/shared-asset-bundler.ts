@@ -2,6 +2,7 @@ import {
   AssetHashType,
   BundlingOutput,
   DockerImage,
+  FileSystem,
   aws_s3_assets,
 } from "aws-cdk-lib";
 import { Code, S3Code } from "aws-cdk-lib/aws-lambda";
@@ -9,29 +10,15 @@ import { Asset } from "aws-cdk-lib/aws-s3-assets";
 import { md5hash } from "aws-cdk-lib/core/lib/helpers-internal";
 import { Construct } from "constructs";
 import * as path from "path";
-import * as fs from "fs";
 
+/**
+ * Compute a deterministic hash over multiple directory paths.
+ * Uses CDK's built-in FileSystem.fingerprint() which sorts files
+ * and hashes both paths and contents — guaranteed deterministic
+ * across macOS (APFS) and Linux ext4 (CodeBuild).
+ */
 function calculateHash(paths: string[]): string {
-  return paths.reduce((mh, p) => {
-    // Sort entries to ensure deterministic hashing across platforms.
-    // fs.readdirSync() order varies on Linux ext4 (CodeBuild) vs macOS (APFS),
-    // which causes non-deterministic asset hashes and infinite CDK Pipeline
-    // self-mutation loops.
-    const dirs = fs.readdirSync(p).sort();
-    const hash = calculateHash(
-      dirs
-        .filter((d) => fs.statSync(path.join(p, d)).isDirectory())
-        .map((v) => path.join(p, v))
-    );
-    return md5hash(
-      mh +
-        dirs
-          .filter((d) => fs.statSync(path.join(p, d)).isFile())
-          .reduce((h, f) => {
-            return md5hash(h + fs.readFileSync(path.join(p, f)));
-          }, hash)
-    );
-  }, "");
+  return md5hash(paths.map((p) => FileSystem.fingerprint(p)).join(":"));
 }
 
 export class SharedAssetBundler extends Construct {
