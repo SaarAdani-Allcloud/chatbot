@@ -32,6 +32,7 @@ import Layout from "./layout";
 import { UserContext } from "./common/user-context";
 import { UserRole } from "./common/types";
 import { ChatLayout } from "./components/chatbot/types";
+import NoDefaultApplication from "./pages/no-default-application";
 
 function App() {
   const appContext = useContext(AppContext);
@@ -39,17 +40,33 @@ function App() {
   const Router = appContext?.config.privateWebsite ? HashRouter : BrowserRouter;
 
   const applicationRoutes = () => {
+    // Only show application routes for non-admin users or when a default application is set
+    const hasDefaultApp = userContext.userProfile.defaultApplicationId && 
+                          userContext.userProfile.defaultApplicationId.trim() !== "";
+    const isAdminOrManager = userContext?.userRoles?.includes(UserRole.ADMIN) || 
+                             userContext?.userRoles?.includes(UserRole.WORKSPACE_MANAGER);
+    
     return (
       <>
-        <Route
-          path="/"
-          element={
-            <Navigate
-              to={`/chat/application/${userContext.userProfile.defaultApplicationId}`}
-              replace
-            />
-          }
-        />
+        {/* Redirect regular users with default app to their application */}
+        {hasDefaultApp && !isAdminOrManager && (
+          <Route
+            path="/"
+            element={
+              <Navigate
+                to={`/chat/application/${userContext.userProfile.defaultApplicationId}`}
+                replace
+              />
+            }
+          />
+        )}
+        {/* Fallback for regular users without default app - show them instructions */}
+        {!hasDefaultApp && !isAdminOrManager && userContext?.userRoles !== undefined && (
+          <Route
+            path="/"
+            element={<NoDefaultApplication />}
+          />
+        )}
         <Route path="/chat/application/:applicationId" element={<Outlet />}>
           <Route
             path=""

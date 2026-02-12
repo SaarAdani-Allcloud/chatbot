@@ -290,6 +290,9 @@ function getTypedEnvVar<T>(
 
       options.advancedMonitoring = config.advancedMonitoring;
       options.createVpcEndpoints = config.vpc?.createVpcEndpoints;
+      options.s3VpcEndpointIps = config.vpc?.s3VpcEndpointIps;
+      options.s3VpcEndpointId = config.vpc?.s3VpcEndpointId;
+      options.executeApiVpcEndpointId = config.vpc?.executeApiVpcEndpointId;
       options.logRetention = config.logRetention;
       options.rateLimitPerAIP = config.rateLimitPerIP;
       options.llmRateLimitPerIP = config.llms.rateLimitPerIP;
@@ -367,6 +370,45 @@ function getTypedEnvVar<T>(
                   false,
                   options.envPrefix
                 ),
+                // Both IPs and endpoint ID must be provided together for manual configuration
+                s3VpcEndpointIps: getTypedEnvVar<string>(
+                  "S3_VPC_ENDPOINT_IPS",
+                  "",
+                  options.envPrefix
+                ) && getTypedEnvVar<string>(
+                  "S3_VPC_ENDPOINT_ID",
+                  "",
+                  options.envPrefix
+                )
+                  ? getTypedEnvVar<string>(
+                      "S3_VPC_ENDPOINT_IPS",
+                      "",
+                      options.envPrefix
+                    )
+                      .split(",")
+                      .map((ip: string) => ip.trim())
+                      .filter((ip: string) => ip.length > 0)
+                  : undefined,
+                s3VpcEndpointId: getTypedEnvVar<string>(
+                  "S3_VPC_ENDPOINT_IPS",
+                  "",
+                  options.envPrefix
+                ) && getTypedEnvVar<string>(
+                  "S3_VPC_ENDPOINT_ID",
+                  "",
+                  options.envPrefix
+                )
+                  ? getTypedEnvVar<string>(
+                      "S3_VPC_ENDPOINT_ID",
+                      "",
+                      options.envPrefix
+                    )
+                  : undefined,
+                executeApiVpcEndpointId: getTypedEnvVar<string>(
+                  "EXECUTE_API_VPC_ENDPOINT_ID",
+                  "",
+                  options.envPrefix
+                ) || undefined,
               }
             : undefined,
 
@@ -1580,7 +1622,7 @@ async function processCreateOptions(options: any): Promise<void> {
       message: "Do you want create VPC Endpoints?",
       initial: options.createVpcEndpoints || false,
       skip(): boolean {
-        return !(this as any).state.answers.existingVpc;
+        return !answers.existingVpc;
       },
     },
     {
@@ -1589,6 +1631,68 @@ async function processCreateOptions(options: any): Promise<void> {
       message:
         "Do you want to deploy a private website? I.e only accessible in VPC",
       initial: options.privateWebsite || false,
+    },
+    {
+      type: "confirm",
+      name: "provideS3VpcEndpointIps",
+      message: "Do you want to provide S3 VPC endpoint IP addresses manually? (Otherwise they will be auto-discovered)",
+      initial: false,
+      skip(): boolean {
+        return !(this as any).state.answers.privateWebsite || !answers.existingVpc;
+      },
+    },
+    {
+      type: "list",
+      name: "s3VpcEndpointIps",
+      message: "Enter S3 VPC endpoint IP addresses (comma-separated, one per availability zone)",
+      separator: ",",
+      skip(): boolean {
+        return !(this as any).state.answers.provideS3VpcEndpointIps;
+      },
+      validate(v: any) {
+        if ((this as any).skipped) return true;
+        const ips = Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',') : []);
+        const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+        const allValid = ips.every((ip: string) => {
+          const trimmedIp = ip.trim();
+          if (!ipPattern.test(trimmedIp)) return false;
+          const parts = trimmedIp.split('.').map(Number);
+          return parts.every(part => part >= 0 && part <= 255);
+        });
+        return allValid || "Please enter valid IP addresses (e.g., 10.0.1.5, 10.0.2.5)";
+      },
+      initial: options.s3VpcEndpointIps || [],
+    },
+    {
+      type: "input",
+      name: "s3VpcEndpointId",
+      message: "Enter the S3 VPC endpoint ID (e.g., vpce-xxxxx)",
+      skip(): boolean {
+        return !(this as any).state.answers.provideS3VpcEndpointIps;
+      },
+      validate(v: string) {
+        if ((this as any).skipped) return true;
+        if (!v || v.trim() === '') {
+          return "VPC endpoint ID is required when providing manual IP addresses";
+        }
+        const vpcePattern = /^vpce-[a-f0-9]+$/;
+        return vpcePattern.test(v.trim()) || "Please enter a valid VPC endpoint ID (e.g., vpce-0123456789abcdef0)";
+      },
+      initial: options.s3VpcEndpointId || "",
+    },
+    {
+      type: "input",
+      name: "executeApiVpcEndpointId",
+      message: "Enter existing execute-api VPC endpoint ID (leave empty to create new one)",
+      skip(): boolean {
+        return !(this as any).state.answers.privateWebsite || !answers.existingVpc;
+      },
+      validate(v: string) {
+        if ((this as any).skipped || !v || v.trim() === '') return true;
+        const vpcePattern = /^vpce-[a-f0-9]+$/;
+        return vpcePattern.test(v.trim()) || "Please enter a valid VPC endpoint ID (e.g., vpce-0123456789abcdef0)";
+      },
+      initial: options.executeApiVpcEndpointId || "",
     },
     {
       type: "confirm",
@@ -1859,6 +1963,23 @@ async function processCreateOptions(options: any): Promise<void> {
           vpcId: answers.vpcId.toLowerCase(),
           createVpcEndpoints: advancedSettings.createVpcEndpoints,
           subnetIds: answers.vpcSubnetIds,
+          // Both IPs and endpoint ID must be provided together for manual configuration
+          s3VpcEndpointIps: advancedSettings.s3VpcEndpointIps && 
+                           advancedSettings.s3VpcEndpointIps.length > 0 &&
+                           advancedSettings.s3VpcEndpointId &&
+                           advancedSettings.s3VpcEndpointId.trim() !== ''
+            ? advancedSettings.s3VpcEndpointIps.map((ip: string) => ip.trim())
+            : undefined,
+          s3VpcEndpointId: advancedSettings.s3VpcEndpointIps && 
+                          advancedSettings.s3VpcEndpointIps.length > 0 &&
+                          advancedSettings.s3VpcEndpointId &&
+                          advancedSettings.s3VpcEndpointId.trim() !== ''
+            ? advancedSettings.s3VpcEndpointId.trim()
+            : undefined,
+          executeApiVpcEndpointId: advancedSettings.executeApiVpcEndpointId &&
+                          advancedSettings.executeApiVpcEndpointId.trim() !== ''
+            ? advancedSettings.executeApiVpcEndpointId.trim()
+            : undefined,
         }
       : undefined,
     privateWebsite: advancedSettings.privateWebsite,

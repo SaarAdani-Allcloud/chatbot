@@ -43,17 +43,21 @@ export class UserInterface extends Construct {
     const appPath = path.join(__dirname, "react-app");
     const buildPath = path.join(appPath, "dist");
     const region = cdk.Stack.of(this).region;
-    const uploadLogsBucket = new s3.Bucket(this, "WebsiteLogsBucket", {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy:
-        props.config.retainOnDelete === true
-          ? cdk.RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE
-          : cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: props.config.retainOnDelete !== true,
-      enforceSSL: true,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      versioned: true,
-    });
+    // Create S3 access log bucket only when S3 access logging is enabled
+    let uploadLogsBucket: s3.Bucket | undefined;
+    if (!props.config.disableS3AccessLogs) {
+      uploadLogsBucket = new s3.Bucket(this, "WebsiteLogsBucket", {
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        removalPolicy:
+          props.config.retainOnDelete === true
+            ? cdk.RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE
+            : cdk.RemovalPolicy.DESTROY,
+        autoDeleteObjects: props.config.retainOnDelete !== true,
+        enforceSSL: true,
+        encryption: s3.BucketEncryption.S3_MANAGED,
+        versioned: true,
+      });
+    }
 
     const websiteBucket = new s3.Bucket(this, "WebsiteBucket", {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
@@ -67,7 +71,7 @@ export class UserInterface extends Construct {
         ? "index.html"
         : undefined,
       enforceSSL: true,
-      serverAccessLogsBucket: uploadLogsBucket,
+      ...(uploadLogsBucket ? { serverAccessLogsBucket: uploadLogsBucket } : {}),
       // Cloudfront with OAI only supports S3 Managed Key (would need to migrate to OAC)
       // https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -76,6 +80,7 @@ export class UserInterface extends Construct {
 
     // Deploy either Private (only accessible within VPC) or Public facing website
     let redirectSignIn: string;
+    let redirectSignOut: string;
     let cognitoEndpoint: string;
 
     if (props.config.privateWebsite) {
@@ -92,7 +97,9 @@ export class UserInterface extends Construct {
         websiteBucket: websiteBucket,
       });
       this.publishedDomain = props.config.domain ? props.config.domain : "";
+      // Private websites use ALB which redirects to /index.html
       redirectSignIn = `https://${this.publishedDomain}/index.html`;
+      redirectSignOut = `https://${this.publishedDomain}/index.html`;
       cognitoEndpoint = privateProxy.cognitoProxyApi.url;
     } else {
       const publicWebsite = new PublicWebsite(this, "PublicWebsite", {
@@ -107,6 +114,7 @@ export class UserInterface extends Construct {
         ? props.config.domain
         : publicWebsite.distribution.distributionDomainName;
       redirectSignIn = `https://${this.publishedDomain}`;
+      redirectSignOut = `https://${this.publishedDomain}`;
       cognitoEndpoint = `https://cognito-idp.${region}.amazonaws.com/`;
     }
 
@@ -128,7 +136,7 @@ export class UserInterface extends Construct {
         ? {
             domain: `${props.config.cognitoFederation.cognitoDomain}.auth.${cdk.Aws.REGION}.amazoncognito.com`,
             redirectSignIn: redirectSignIn,
-            redirectSignOut: `https://${this.publishedDomain}`,
+            redirectSignOut: redirectSignOut,
             Scopes: ["email", "openid"],
             responseType: "code",
           }
@@ -230,11 +238,23 @@ export class UserInterface extends Construct {
     /**
      * CDK NAG suppression
      */
-    NagSuppressions.addResourceSuppressions(uploadLogsBucket, [
-      {
-        id: "AwsSolutions-S1",
-        reason: "Bucket is the server access logs bucket for websiteBucket.",
-      },
-    ]);
+    if (uploadLogsBucket) {
+      NagSuppressions.addResourceSuppressions(uploadLogsBucket, [
+        {
+          id: "AwsSolutions-S1",
+          reason: "Bucket is the server access logs bucket for websiteBucket.",
+        },
+      ]);
+    }
+
+    if (props.config.disableS3AccessLogs) {
+      NagSuppressions.addResourceSuppressions(websiteBucket, [
+        {
+          id: "AwsSolutions-S1",
+          reason:
+            "S3 access logging disabled; CloudTrail data events provide equivalent audit coverage.",
+        },
+      ]);
+    }
   }
 }

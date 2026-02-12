@@ -56,6 +56,7 @@ export class ChatBotApi extends Construct {
       kmsKey: props.shared.kmsKey,
       retainOnDelete: props.config.retainOnDelete,
       s3transferAcceleration: props.config.enableS3TransferAcceleration,
+      disableS3AccessLogs: props.config.disableS3AccessLogs,
     });
     const applicationTables = new ApplicationDynamoDBTables(
       this,

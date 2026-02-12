@@ -23,20 +23,37 @@ export class CognitoPrivateProxy extends Construct {
     const region = cdk.Stack.of(this).region;
     const cognitoEndpoint = `https://cognito-idp.${region}.amazonaws.com`;
     const stack = cdk.Stack.of(this);
-    const stackName = stack.stackName;
+    // Use node.path (construct tree path) instead of stackName for NagSuppression paths.
+    // stackName uses dashes (e.g., "DeployChatBot-MyStack") while construct tree
+    // paths use slashes (e.g., "DeployChatBot/MyStack"). NagSuppressions expects
+    // construct tree paths.
+    const stackPath = stack.node.path;
 
-    const vpcEndpoint = new ec2.InterfaceVpcEndpoint(
-      this,
-      "ApiGatewayVpcEndpoint",
-      {
-        vpc: shared.vpc,
-        service: new ec2.InterfaceVpcEndpointService(
-          `com.amazonaws.${region}.execute-api`
-        ),
-        subnets: shared.vpcSubnets,
-        privateDnsEnabled: true,
-      }
-    );
+    // Use existing execute-api VPC endpoint if provided, otherwise create one
+    let vpcEndpoint: ec2.IInterfaceVpcEndpoint;
+    if (props.config.vpc?.executeApiVpcEndpointId) {
+      vpcEndpoint = ec2.InterfaceVpcEndpoint.fromInterfaceVpcEndpointAttributes(
+        this,
+        "ApiGatewayVpcEndpoint",
+        {
+          vpcEndpointId: props.config.vpc.executeApiVpcEndpointId,
+          port: 443,
+        }
+      );
+    } else {
+      vpcEndpoint = new ec2.InterfaceVpcEndpoint(
+        this,
+        "ApiGatewayVpcEndpoint",
+        {
+          vpc: shared.vpc,
+          service: new ec2.InterfaceVpcEndpointService(
+            `com.amazonaws.${region}.execute-api`
+          ),
+          subnets: shared.vpcSubnets,
+          privateDnsEnabled: true,
+        }
+      );
+    }
 
     this.cognitoProxyApi = new apigateway.RestApi(this, "CognitoProxyApi", {
       restApiName: "Chatbot Cognito Proxy API",
@@ -139,13 +156,10 @@ export class CognitoPrivateProxy extends Construct {
     NagSuppressions.addResourceSuppressionsByPath(
       stack,
       [
-        `/${stackName}/UserInterface/${id}/CognitoProxyApi/Resource`,
-        //`/${stackName}/UserInterface/${id}/CognitoProxyApi/DeploymentStage.auth/Resource`,
-        //`/${stackName}/UserInterface/${id}/CognitoProxyApi/Default/{proxy+}/ANY/Resource`,
-        //`/${stackName}/UserInterface/${id}/CognitoProxyApi/Default/{proxy+}/OPTIONS/Resource`,
-        `/${stackName}/UserInterface/${id}/CognitoProxyApi/DeploymentStage.auth/Resource`,
-        `/${stackName}/UserInterface/${id}/CognitoProxyApi/Default/OPTIONS/Resource`,
-        `/${stackName}/UserInterface/${id}/CognitoProxyApi/Default/POST/Resource`,
+        `/${stackPath}/UserInterface/${id}/CognitoProxyApi/Resource`,
+        `/${stackPath}/UserInterface/${id}/CognitoProxyApi/DeploymentStage.auth/Resource`,
+        `/${stackPath}/UserInterface/${id}/CognitoProxyApi/Default/OPTIONS/Resource`,
+        `/${stackPath}/UserInterface/${id}/CognitoProxyApi/Default/POST/Resource`,
       ],
       [
         { id: "AwsSolutions-APIG4", reason: "proxy request to cognito" },

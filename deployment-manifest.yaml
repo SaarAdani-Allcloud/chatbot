@@ -1,0 +1,157 @@
+# ============================================
+# Deployment Manifest for AWS GenAI LLM Chatbot
+# ============================================
+# This file overrides values from config.json
+# Updating this file will trigger the CI/CD pipeline
+#
+# Priority: deployment-manifest.yaml > config.json > defaults
+# ============================================
+
+# ============================================
+# CORE DEPLOYMENT SETTINGS (Required)
+# ============================================
+
+# Resource naming prefix - primary deployment identifier
+# Max 16 chars, must start with letter, alphanumeric and hyphens only
+prefix: "saarcb2025"
+
+# ============================================
+# CORE DEPLOYMENT SETTINGS (Optional)
+# ============================================
+
+# Enable AWS WAF protection
+# enableWaf: true
+
+# Create KMS Customer Managed Keys for encryption at rest
+# createCMKs: false
+
+# Enable CloudWatch custom metrics, alarms, and X-Ray
+# advancedMonitoring: false
+
+# ============================================
+# LOGGING CONFIGURATION
+# ============================================
+
+# Disable S3 server access log buckets (use when CloudTrail data events are enabled)
+disableS3AccessLogs: true
+
+# Centralized log archive bucket name (cross-account, for ALB access logs)
+# ALB logs will be written to: s3://<bucket>/<prefix>/alb-logs/
+logArchiveBucketName: "logarchive-chatbotbucket-saar1"
+
+# ============================================
+# WEBSITE/UI CONFIGURATION (Private Website)
+# ============================================
+
+# Deploy as private website (only accessible within VPC)
+# privateWebsite: true
+
+# ACM certificate ARN (must be in il-central-1 for private website)
+# certificate: "arn:aws:acm:il-central-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Custom domain name for the private website
+# domain: "chat.example.com"
+
+# ============================================
+# VPC/NETWORK CONFIGURATION
+# ============================================
+
+# vpc:
+#   vpcId: "vpc-0123456789abcdef0"
+#   subnetIds:
+#     - "subnet-0123456789abcdef0"
+#     - "subnet-0123456789abcdef1"
+#   executeApiVpcEndpointId: "vpce-0123456789abcdef0"
+#   s3VpcEndpointId: "vpce-0123456789abcdef1"
+#   s3VpcEndpointIps:
+#     - "10.0.1.100"
+#     - "10.0.2.100"
+
+# ============================================
+# AUTHENTICATION (Cognito Federation)
+# ============================================
+
+# SAML Configuration:
+# cognitoFederation:
+#   enabled: true
+#   autoRedirect: true
+#   customProviderName: "EnterpriseSSO"
+#   customProviderType: "SAML"
+#   cognitoDomain: "my-chatbot-domain"
+#   customSAML:
+#     metadataDocumentUrl: "https://idp.example.com/metadata.xml"
+
+# OIDC Configuration:
+# cognitoFederation:
+#   enabled: true
+#   autoRedirect: true
+#   customProviderName: "EnterpriseOIDC"
+#   customProviderType: "OIDC"
+#   cognitoDomain: "my-chatbot-domain"
+#   customOIDC:
+#     OIDCClient: "your-client-id"
+#     OIDCSecret: "arn:aws:secretsmanager:il-central-1:123456789012:secret:oidc-secret-xxxxx"
+#     OIDCIssuerURL: "https://login.example.com"
+
+# ============================================
+# BEDROCK GUARDRAILS
+# ============================================
+
+# bedrock:
+#   guardrails:
+#     enabled: true
+#     identifier: "abc123def456"
+#     version: "1"
+
+# ============================================
+# RAG CONFIGURATION (OpenSearch & Knowledge Base)
+# ============================================
+
+# rag:
+#   enabled: true
+#   crossEncodingEnabled: false
+#   engines:
+#     opensearch:
+#       enabled: true
+#     knowledgeBase:
+#       enabled: true
+#       external:
+#         - name: "my-knowledge-base"
+#           knowledgeBaseId: "ABCD123456"
+#           region: "il-central-1"
+#           enabled: true
+#   embeddingsModels:
+#     - provider: "bedrock"
+#       name: "amazon.titan-embed-text-v1"
+#       dimensions: 1536
+#       default: true
+
+# ============================================
+# CI/CD PIPELINE CONFIGURATION
+# ============================================
+# When pipeline.enabled is true, `cdk deploy` creates a self-mutating
+# CodePipeline that deploys the ChatBot on every push to CodeCommit.
+# When false or absent, `cdk deploy` deploys the ChatBot stack directly.
+#
+# Manual Approval: when requireApproval is true, the pipeline pauses
+# after synth and waits for a reviewer to approve in the CodePipeline
+# console (or via email link if notificationEmail is set) before deploying.
+#
+# Notification Email: if provided, an SNS topic + email subscription
+# is created. The reviewer receives an email with an approve/reject link.
+# If omitted, no SNS topic is created (approval is done via console only).
+
+pipeline:
+  enabled: true
+  codecommit:
+    # Option A: use an existing CodeCommit repository
+    # existingRepositoryName: "aws-genai-llm-chatbot"
+    # Option B: create a new repository (mutually exclusive with Option A)
+    createNew: true
+    newRepositoryName: "aws-genai-llm-chatbot"
+    # Note: seedOnCreate removed — CodeCommit has a hard 20 MB limit for
+    # initial commits via CloudFormation. After deploy, push code manually
+    # using the PostDeployInstructions output from the stack.
+  branch: "main"
+  requireApproval: true
+  notificationEmail: "saar.adani@allcloud.io"

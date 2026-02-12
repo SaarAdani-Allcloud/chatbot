@@ -40,6 +40,11 @@ export class Authentication extends Construct {
       signInAliases: {
         email: true,
       },
+      customAttributes: {
+        chatbot_role: new cognito.StringAttribute({
+          mutable: true,
+        }),
+      },
     });
 
     new cognito.CfnUserPoolGroup(this, "AdminGroup", {
@@ -302,6 +307,21 @@ export class Authentication extends Construct {
           resources: ["*"],
         })
       );
+
+      // VPC access permissions (required when Lambda is placed in VPC)
+      lambdaRoleAddUserToGroup.addToPolicy(
+        new iam.PolicyStatement({
+          actions: [
+            "ec2:CreateNetworkInterface",
+            "ec2:DescribeNetworkInterfaces",
+            "ec2:DeleteNetworkInterface",
+            "ec2:AssignPrivateIpAddresses",
+            "ec2:UnassignPrivateIpAddresses",
+          ],
+          resources: ["*"],
+        })
+      );
+
       const addFederatedUserToUserGroupLambda = new lambda.Function(
         this,
         "addFederatedUserToUserGroup",
@@ -388,7 +408,7 @@ export class Authentication extends Construct {
         cdk.Stack.of(this),
         [
           `/${
-            cdk.Stack.of(this).stackName
+            cdk.Stack.of(this).node.path
           }/Authentication/lambdaRoleUpdateClient/DefaultPolicy/Resource`,
         ],
         [
@@ -402,7 +422,7 @@ export class Authentication extends Construct {
         cdk.Stack.of(this),
         [
           `/${
-            cdk.Stack.of(this).stackName
+            cdk.Stack.of(this).node.path
           }/Authentication/lambdaRoleAddUserToGroup/DefaultPolicy/Resource`,
         ],
         [
@@ -417,7 +437,7 @@ export class Authentication extends Construct {
           cdk.Stack.of(this),
           [
             `/${
-              cdk.Stack.of(this).stackName
+              cdk.Stack.of(this).node.path
             }/Authentication/lambdaRoleUpdateOidcSecret/DefaultPolicy/Resource`,
           ],
           [

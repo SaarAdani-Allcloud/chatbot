@@ -105,9 +105,14 @@ export default function AppConfigured() {
         // Use URLSearchParams to work with the query string easily
         const urlParams = new URLSearchParams(queryString);
 
+        // Check if this is an OAuth callback (code or error in URL)
+        // If so, skip auto-redirect to let Amplify process the callback first
+        const isOAuthCallback = urlParams.get("code") || urlParams.get("error");
+
         if (
           currentConfig?.config.auth_federated_provider?.auto_redirect &&
-          urlParams.get("loginlocal") != "true"
+          urlParams.get("loginlocal") != "true" &&
+          !isOAuthCallback
         ) {
           let authenticated = false;
           try {

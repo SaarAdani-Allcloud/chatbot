@@ -14,6 +14,8 @@ import { SharedAssetBundler } from "./shared-asset-bundler";
 import { NagSuppressions } from "cdk-nag";
 import { getConstructId } from "../utils";
 
+export { LambdaVpcAspect, LambdaVpcAspectProps } from "./lambda-vpc-aspect";
+
 const pythonRuntime = lambda.Runtime.PYTHON_3_11;
 const lambdaArchitecture = lambda.Architecture.X86_64;
 process.env.DOCKER_DEFAULT_PLATFORM = lambdaArchitecture.dockerPlatform;
@@ -25,6 +27,7 @@ export interface SharedProps {
 export class Shared extends Construct {
   readonly vpc: ec2.Vpc;
   readonly vpcSubnets: ec2.SubnetSelection;
+  readonly lambdaSecurityGroup: ec2.SecurityGroup;
   readonly kmsKey: kms.Key;
   readonly kmsKeyAlias: string;
   readonly queueKmsKey: kms.Key;
@@ -278,6 +281,32 @@ export class Shared extends Construct {
     }
 
     this.webACLRules = this.createWafRules(props.config.rateLimitPerIP ?? 400);
+
+    // Create a default security group for Lambda functions
+    let lambdaSecurityGroup: ec2.SecurityGroup;
+    if (props.config.vpc?.vpcDefaultSecurityGroup) {
+      // Use the provided security group from config
+      lambdaSecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(
+        this,
+        "LambdaSecurityGroup",
+        props.config.vpc.vpcDefaultSecurityGroup,
+        {
+          mutable: false,
+        }
+      ) as ec2.SecurityGroup;
+    } else {
+      // Create a new security group for Lambda functions
+      lambdaSecurityGroup = new ec2.SecurityGroup(
+        this,
+        "LambdaSecurityGroup",
+        {
+          vpc: vpc,
+          description: "Security group for Lambda functions",
+          allowAllOutbound: true,
+        }
+      );
+    }
+    this.lambdaSecurityGroup = lambdaSecurityGroup;
 
     this.configParameter = new ssm.StringParameter(this, "Config", {
       stringValue: JSON.stringify(props.config),

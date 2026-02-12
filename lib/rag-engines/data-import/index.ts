@@ -77,17 +77,34 @@ export class DataImport extends Construct {
       },
     });
 
-    const uploadLogsBucket = new s3.Bucket(this, "UploadLogsBucket", {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy:
-        props.config.retainOnDelete === true
-          ? cdk.RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE
-          : cdk.RemovalPolicy.DESTROY,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      autoDeleteObjects: props.config.retainOnDelete !== true,
-      enforceSSL: true,
-      versioned: true,
-    });
+    // Create S3 access log buckets only when S3 access logging is enabled
+    let uploadLogsBucket: s3.Bucket | undefined;
+    let processingLogsBucket: s3.Bucket | undefined;
+    if (!props.config.disableS3AccessLogs) {
+      uploadLogsBucket = new s3.Bucket(this, "UploadLogsBucket", {
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        removalPolicy:
+          props.config.retainOnDelete === true
+            ? cdk.RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE
+            : cdk.RemovalPolicy.DESTROY,
+        encryption: s3.BucketEncryption.S3_MANAGED,
+        autoDeleteObjects: props.config.retainOnDelete !== true,
+        enforceSSL: true,
+        versioned: true,
+      });
+
+      processingLogsBucket = new s3.Bucket(this, "ProcessingLogsBucket", {
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        removalPolicy:
+          props.config.retainOnDelete === true
+            ? cdk.RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE
+            : cdk.RemovalPolicy.DESTROY,
+        autoDeleteObjects: props.config.retainOnDelete !== true,
+        enforceSSL: true,
+        encryption: s3.BucketEncryption.S3_MANAGED,
+        versioned: true,
+      });
+    }
 
     const uploadBucket = new s3.Bucket(this, "UploadBucket", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -98,7 +115,9 @@ export class DataImport extends Construct {
       autoDeleteObjects: props.config.retainOnDelete !== true,
       transferAcceleration: props.s3TransferAcceleration,
       enforceSSL: true,
-      serverAccessLogsBucket: uploadLogsBucket,
+      ...(uploadLogsBucket
+        ? { serverAccessLogsBucket: uploadLogsBucket }
+        : {}),
       encryption: props.shared.kmsKey
         ? s3.BucketEncryption.KMS
         : s3.BucketEncryption.S3_MANAGED,
@@ -120,18 +139,6 @@ export class DataImport extends Construct {
       ],
     });
 
-    const processingLogsBucket = new s3.Bucket(this, "ProcessingLogsBucket", {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy:
-        props.config.retainOnDelete === true
-          ? cdk.RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE
-          : cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: props.config.retainOnDelete !== true,
-      enforceSSL: true,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      versioned: true,
-    });
-
     const processingBucket = new s3.Bucket(this, "ProcessingBucket", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy:
@@ -140,7 +147,9 @@ export class DataImport extends Construct {
           : cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: props.config.retainOnDelete !== true,
       enforceSSL: true,
-      serverAccessLogsBucket: processingLogsBucket,
+      ...(processingLogsBucket
+        ? { serverAccessLogsBucket: processingLogsBucket }
+        : {}),
       encryption: props.shared.kmsKey
         ? s3.BucketEncryption.KMS
         : s3.BucketEncryption.S3_MANAGED,
@@ -297,14 +306,29 @@ export class DataImport extends Construct {
     /**
      * CDK NAG suppression
      */
-    NagSuppressions.addResourceSuppressions(
-      [uploadLogsBucket, processingLogsBucket],
-      [
-        {
-          id: "AwsSolutions-S1",
-          reason: "Logging bucket does not require it's own access logs.",
-        },
-      ]
-    );
+    if (uploadLogsBucket && processingLogsBucket) {
+      NagSuppressions.addResourceSuppressions(
+        [uploadLogsBucket, processingLogsBucket],
+        [
+          {
+            id: "AwsSolutions-S1",
+            reason: "Logging bucket does not require it's own access logs.",
+          },
+        ]
+      );
+    }
+
+    if (props.config.disableS3AccessLogs) {
+      NagSuppressions.addResourceSuppressions(
+        [uploadBucket, processingBucket],
+        [
+          {
+            id: "AwsSolutions-S1",
+            reason:
+              "S3 access logging disabled; CloudTrail data events provide equivalent audit coverage.",
+          },
+        ]
+      );
+    }
   }
 }

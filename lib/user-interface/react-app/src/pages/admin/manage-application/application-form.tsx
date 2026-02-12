@@ -73,27 +73,50 @@ export default function ApplicationForm(props: ApplicationFormProps) {
     (async () => {
       const apiClient = new ApiClient(appContext);
       try {
-        const [modelsResult, workspacesResult, rolesResult] = await Promise.all(
-          [
-            apiClient.models.getModels(),
+        // Fetch models and roles (always needed)
+        const modelsPromise = apiClient.models.getModels();
+        const rolesPromise = apiClient.roles.getRoles();
+
+        // Conditionally fetch workspaces only if RAG is enabled
+        if (appContext.config.rag_enabled) {
+          const [modelsResult, workspacesResult, rolesResult] = await Promise.all([
+            modelsPromise,
             apiClient.workspaces.getWorkspaces(),
-            apiClient.roles.getRoles(),
-          ]
-        );
+            rolesPromise,
+          ]);
 
-        const models = modelsResult.data ? modelsResult.data.listModels : [];
-        setModels(models);
-        setModelsStatus("finished");
+          const models = modelsResult.data ? modelsResult.data.listModels : [];
+          setModels(models);
+          setModelsStatus("finished");
 
-        const workspaces = workspacesResult.data?.listWorkspaces || [];
-        setWorkspaces(workspaces);
-        setWorkspacesStatus(
-          workspacesResult.errors === undefined ? "finished" : "error"
-        );
+          const workspaces = workspacesResult.data?.listWorkspaces || [];
+          setWorkspaces(workspaces);
+          setWorkspacesStatus(
+            workspacesResult.errors === undefined ? "finished" : "error"
+          );
 
-        const roles = rolesResult.data ? rolesResult.data.listRoles : [];
-        setRoles(roles);
-        setRolesStatus("finished");
+          const roles = rolesResult.data ? rolesResult.data.listRoles : [];
+          setRoles(roles);
+          setRolesStatus("finished");
+        } else {
+          // RAG is disabled, skip workspace fetching
+          const [modelsResult, rolesResult] = await Promise.all([
+            modelsPromise,
+            rolesPromise,
+          ]);
+
+          const models = modelsResult.data ? modelsResult.data.listModels : [];
+          setModels(models);
+          setModelsStatus("finished");
+
+          // Set empty workspaces when RAG is disabled
+          setWorkspaces([]);
+          setWorkspacesStatus("finished");
+
+          const roles = rolesResult.data ? rolesResult.data.listRoles : [];
+          setRoles(roles);
+          setRolesStatus("finished");
+        }
 
         setLoading(false);
       } catch (error) {

@@ -52,6 +52,7 @@ export enum SupportedBedrockRegion {
   EU_WEST_3 = "eu-west-3",
   US_EAST_1 = "us-east-1",
   US_WEST_2 = "us-west-2",
+  IL_CENTRAL_1 = "il-central-1",
 }
 
 export enum ModelInterface {
@@ -77,6 +78,19 @@ export interface ModelConfig {
   default?: boolean;
 }
 
+export interface PipelineConfig {
+  enabled: boolean;
+  codecommit: {
+    existingRepositoryName?: string;
+    createNew?: boolean;
+    newRepositoryName?: string;
+    seedOnCreate?: boolean;
+  };
+  branch: string;
+  requireApproval: boolean;
+  notificationEmail?: string;
+}
+
 export interface SystemConfig {
   prefix: string;
   enableWaf: boolean;
@@ -88,11 +102,16 @@ export interface SystemConfig {
   createCMKs?: boolean;
   retainOnDelete?: boolean;
   ddbDeletionProtection?: boolean;
+  disableS3AccessLogs?: boolean;
+  logArchiveBucketName?: string;
   vpc?: {
     vpcId?: string;
     createVpcEndpoints?: boolean;
     vpcDefaultSecurityGroup?: string;
     subnetIds?: string[];
+    s3VpcEndpointIps?: string[];
+    s3VpcEndpointId?: string;
+    executeApiVpcEndpointId?: string;
   };
   advancedMonitoring?: boolean;
   logRetention?: number;
@@ -187,6 +206,7 @@ export interface SystemConfig {
     crossEncodingEnabled: boolean;
     crossEncoderModels: ModelConfig[];
   };
+  pipeline?: PipelineConfig;
 }
 
 export interface SageMakerLLMEndpoint {

@@ -34,6 +34,10 @@ if WORKSPACES_TABLE_NAME:
 
 
 def list_workspaces():
+    if not WORKSPACES_TABLE_NAME:
+        logger.info("WORKSPACES_TABLE_NAME not set, RAG is disabled - returning empty list")
+        return []
+    
     all_items = []
     last_evaluated_key = None
 
@@ -66,6 +70,10 @@ def list_workspaces():
 
 
 def get_workspace(workspace_id: str):
+    if not WORKSPACES_TABLE_NAME:
+        logger.warning("WORKSPACES_TABLE_NAME not set, RAG is disabled")
+        return None
+    
     response = table.get_item(
         Key={"workspace_id": workspace_id, "object_type": WORKSPACE_OBJECT_TYPE}
     )
@@ -75,6 +83,10 @@ def get_workspace(workspace_id: str):
 
 
 def set_status(workspace_id: str, status: str):
+    if not WORKSPACES_TABLE_NAME:
+        logger.warning("WORKSPACES_TABLE_NAME not set, RAG is disabled")
+        return None
+    
     timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
     response = table.update_item(

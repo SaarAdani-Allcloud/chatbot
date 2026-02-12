@@ -39,8 +39,29 @@ export class PrivateWebsite extends Construct {
     // Retrieving S3 Endpoint Ips for ALB Target
     const vpc = props.shared.vpc;
 
-    // First, retrieve the VPC Endpoint
-    const vpcEndpointsCall: AwsSdkCall = {
+    // Initialize s3IPs array and vpcEndpointId variable
+    const s3IPs: IpTarget[] = [];
+    let vpcEndpointId: string | undefined;
+
+    // Check if S3 VPC endpoint IPs and ID are provided in configuration (Manual/Cross-Account scenario)
+    if (props.config.vpc?.s3VpcEndpointIps && 
+        props.config.vpc.s3VpcEndpointIps.length > 0 && 
+        props.config.vpc?.s3VpcEndpointId) {
+      // Scenario C: Full Manual Configuration (both IPs and endpoint ID provided)
+      console.log('Using provided S3 VPC endpoint IP addresses and endpoint ID from configuration');
+      
+      props.config.vpc.s3VpcEndpointIps.forEach((ipAddress) => {
+        s3IPs.push(new IpTarget(ipAddress, 443));
+      });
+
+      vpcEndpointId = props.config.vpc.s3VpcEndpointId;
+    } else {
+      // Scenario A: Full Auto-Discovery (default)
+      // Fall back to scanning/discovering VPC endpoints
+      console.log('Scanning for S3 VPC endpoint IP addresses in the account');
+
+      // First, retrieve the VPC Endpoint
+      const vpcEndpointsCall: AwsSdkCall = {
       service: "EC2",
       action: "describeVpcEndpoints",
       parameters: {
@@ -61,7 +82,7 @@ export class PrivateWebsite extends Construct {
       },
       physicalResourceId: cdk.custom_resources.PhysicalResourceId.of(
         "describeNetworkInterfaces"
-      ), //PhysicalResourceId.of('describeVpcEndpoints'),
+      ),
       outputPaths: ["VpcEndpoints.0"],
     };
 
@@ -83,7 +104,6 @@ export class PrivateWebsite extends Construct {
     }
 
     // Then, retrieve the Private IP Addresses for each ENI of the VPC Endpoint
-    const s3IPs: IpTarget[] = [];
     for (let index = 0; index < vpc.availabilityZones.length; index++) {
       const sdkCall: AwsSdkCall = {
         service: "EC2",
@@ -99,7 +119,7 @@ export class PrivateWebsite extends Construct {
         },
         physicalResourceId: cdk.custom_resources.PhysicalResourceId.of(
           "describeNetworkInterfaces"
-        ), //PhysicalResourceId.of('describeNetworkInterfaces'),
+        ),
       };
 
       const eni = new AwsCustomResource(
@@ -112,7 +132,7 @@ export class PrivateWebsite extends Construct {
             statements: [
               new iam.PolicyStatement({
                 actions: ["ec2:DescribeNetworkInterfaces"],
-                resources: ["*"], //[`arn:aws:ec2:${process.env.CDK_DEFAULT_REGION }:${process.env.CDK_DEFAULT_ACCOUNT}:network-interface/${eniId}`]
+                resources: ["*"],
               }),
             ],
           },
@@ -128,6 +148,9 @@ export class PrivateWebsite extends Construct {
         )
       );
     }
+
+    vpcEndpointId = vpcEndpoints.getResponseField(`VpcEndpoints.0.VpcEndpointId`);
+  }
 
     // Website ALB
     const albSecurityGroup = new ec2.SecurityGroup(
@@ -156,19 +179,33 @@ export class PrivateWebsite extends Construct {
     });
     this.loadBalancer = loadBalancer;
 
-    const albLogBucket = new s3.Bucket(this, "ALBLoggingBucket", {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy:
-        props.config.retainOnDelete === true
-          ? cdk.RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE
-          : cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: props.config.retainOnDelete !== true,
-      enforceSSL: true,
-      // Only SSE-S3 encryption is supported for ALB logs
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      versioned: true,
-    });
-    loadBalancer.logAccessLogs(albLogBucket);
+    // Send ALB access logs to the centralized log archive bucket or a local bucket
+    let albLogBucket: s3.Bucket | s3.IBucket;
+    if (props.config.logArchiveBucketName) {
+      albLogBucket = s3.Bucket.fromBucketName(
+        this,
+        "ALBLoggingBucket",
+        props.config.logArchiveBucketName
+      );
+      loadBalancer.logAccessLogs(
+        albLogBucket,
+        `${props.config.prefix}/alb-logs`
+      );
+    } else {
+      albLogBucket = new s3.Bucket(this, "ALBLoggingBucket", {
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        removalPolicy:
+          props.config.retainOnDelete === true
+            ? cdk.RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE
+            : cdk.RemovalPolicy.DESTROY,
+        autoDeleteObjects: props.config.retainOnDelete !== true,
+        enforceSSL: true,
+        // Only SSE-S3 encryption is supported for ALB logs
+        encryption: s3.BucketEncryption.S3_MANAGED,
+        versioned: true,
+      });
+      loadBalancer.logAccessLogs(albLogBucket);
+    }
 
     // Adding Listener
     // Using ACM certificate ARN passed in through props/config file
@@ -207,25 +244,27 @@ export class PrivateWebsite extends Construct {
     }
 
     // Allow access to website bucket from S3 Endpoints
-    props.websiteBucket.policy?.document.addStatements(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["s3:GetObject", "s3:List*"],
-        principals: [new iam.AnyPrincipal()], // NOSONAR
-        // Access only allowed from the VPC.
-        resources: [
-          props.websiteBucket.bucketArn,
-          `${props.websiteBucket.bucketArn}/*`,
-        ],
-        conditions: {
-          StringEquals: {
-            "aws:SourceVpce": vpcEndpoints.getResponseField(
-              `VpcEndpoints.0.VpcEndpointId`
-            ),
+    if (vpcEndpointId) {
+      props.websiteBucket.policy?.document.addStatements(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ["s3:GetObject", "s3:List*"],
+          principals: [new iam.AnyPrincipal()], // NOSONAR
+          // Access only allowed from the VPC.
+          resources: [
+            props.websiteBucket.bucketArn,
+            `${props.websiteBucket.bucketArn}/*`,
+          ],
+          conditions: {
+            StringEquals: {
+              "aws:SourceVpce": vpcEndpointId,
+            },
           },
-        },
-      })
-    );
+        })
+      );
+    } else {
+      console.warn('No VPC endpoint ID available for S3 bucket policy. Bucket policy will not restrict access by VPC endpoint.');
+    }
 
     // ###################################################
     // Outputs
@@ -258,11 +297,13 @@ export class PrivateWebsite extends Construct {
       },
     ]);
 
-    NagSuppressions.addResourceSuppressions(albLogBucket, [
-      {
-        id: "AwsSolutions-S1",
-        reason: "Bucket is the server access logs bucket for ALB.",
-      },
-    ]);
+    if (!props.config.logArchiveBucketName) {
+      NagSuppressions.addResourceSuppressions(albLogBucket, [
+        {
+          id: "AwsSolutions-S1",
+          reason: "Bucket is the server access logs bucket for ALB.",
+        },
+      ]);
+    }
   }
 }
