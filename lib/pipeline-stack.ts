@@ -1,11 +1,12 @@
 import * as cdk from "aws-cdk-lib";
 import * as codecommit from "aws-cdk-lib/aws-codecommit";
 import * as codebuild from "aws-cdk-lib/aws-codebuild";
+import * as codepipeline from "aws-cdk-lib/aws-codepipeline";
+import * as codepipeline_actions from "aws-cdk-lib/aws-codepipeline-actions";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as iam from "aws-cdk-lib/aws-iam";
-import * as pipelines from "aws-cdk-lib/pipelines";
 import { Construct } from "constructs";
 import { NagSuppressions } from "cdk-nag";
 import { SystemConfig } from "./shared/types";
@@ -15,18 +16,15 @@ export interface PipelineStackProps extends cdk.StackProps {
 }
 
 /**
- * CDK Pipeline stack that creates a CI/CD pipeline using CodeCommit,
- * CodeBuild, and CodePipeline.
+ * CI/CD Pipeline stack: Source -> (Approval) -> Deploy
  *
- * The pipeline:
- * 1. Triggers on push to the configured branch in CodeCommit
- * 2. Runs cdk synth in CodeBuild (build verification)
- * 3. Optionally requires manual approval before deployment
- * 4. Deploys the ChatBot stack via `cdk deploy` in a CodeBuild step
+ * Uses a raw CodePipeline (not CDK Pipelines) for a lean pipeline
+ * with no redundant synth stage. The deploy step runs `cdk deploy`
+ * directly, producing the exact same CloudFormation template as a
+ * local deploy.
  *
- * The deploy step sets CDK_PIPELINE_DEPLOY=true so the CDK app
- * creates the ChatBot stack directly (same template as local deploy),
- * avoiding construct-path differences that CDK Stages introduce.
+ * The deploy CodeBuild sets CDK_PIPELINE_DEPLOY=true so the CDK app
+ * creates the ChatBot stack directly (not the PipelineStack).
  */
 export class PipelineStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: PipelineStackProps) {
@@ -109,152 +107,160 @@ export class PipelineStack extends cdk.Stack {
     }
 
     // ============================================
-    // 4. CDK Pipeline
+    // 4. Deploy CodeBuild Project
     // ============================================
-    const codeBuildDefaults: pipelines.CodeBuildOptions = {
-      buildEnvironment: {
-        buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
-        computeType: codebuild.ComputeType.LARGE,
-        privileged: true, // required for Docker-in-Docker (Lambda layer bundling)
-      },
-      ...(vpc
-        ? {
-            vpc,
-            subnetSelection,
-          }
-        : {}),
-    };
-
-    const source = pipelines.CodePipelineSource.codeCommit(
-      repo,
-      pipelineConfig.branch
-    );
-
-    const pipeline = new pipelines.CodePipeline(this, "Pipeline", {
-      pipelineName: `${props.config.prefix}-chatbot-pipeline`,
-      selfMutation: false,
-      dockerEnabledForSynth: true,
-      codeBuildDefaults,
-
-      synth: new pipelines.ShellStep("Synth", {
-        input: source,
-        installCommands: [
-          "npm ci",
-          "npm install -g @aws-amplify/cli",
-        ],
-        commands: [
-          "npm run build", // runs: amplify codegen && tsc
-          "npx cdk synth",
-        ],
-      }),
-    });
-
-    // ============================================
-    // 5. Deploy via `cdk deploy` (no CDK Stage wrapper)
-    // ============================================
-    // Using a CodeBuildStep that runs `cdk deploy` directly produces
-    // the exact same CloudFormation template as a local deploy,
-    // avoiding the construct-path / logical-ID differences that
-    // CDK Stages introduce (which caused resource replacements).
     const stackName = `${props.config.prefix}GenAIChatBotStack`;
 
-    const deployStep = new pipelines.CodeBuildStep("CdkDeploy", {
-      input: source,
-      installCommands: [
-        "npm ci",
-        "npm install -g @aws-amplify/cli",
-        // Authenticate to ECR Public for Docker base images used during asset bundling
-        "aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws",
-      ],
-      commands: [
-        "npm run build",
-        `npx cdk deploy ${stackName} --require-approval never`,
-      ],
-      env: {
-        // Tell the CDK app to create the ChatBot stack directly
-        // (same path as local deploy), not the PipelineStack.
-        CDK_PIPELINE_DEPLOY: "true",
-      },
-      rolePolicyStatements: [
-        // Allow cdk deploy to assume CDK bootstrap roles
-        // (deploy-role, file-publishing-role, cfn-exec-role, image-publishing-role)
-        new iam.PolicyStatement({
-          actions: ["sts:AssumeRole"],
-          resources: [`arn:aws:iam::${this.account}:role/cdk-hnb659fds-*`],
+    const deployProject = new codebuild.PipelineProject(
+      this,
+      "DeployProject",
+      {
+        projectName: `${props.config.prefix}-chatbot-deploy`,
+        environment: {
+          buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
+          computeType: codebuild.ComputeType.LARGE,
+          privileged: true, // required for Docker-in-Docker (Lambda layer bundling)
+        },
+        environmentVariables: {
+          CDK_PIPELINE_DEPLOY: { value: "true" },
+        },
+        ...(vpc
+          ? {
+              vpc,
+              subnetSelection,
+            }
+          : {}),
+        buildSpec: codebuild.BuildSpec.fromObject({
+          version: "0.2",
+          phases: {
+            install: {
+              commands: [
+                "npm ci",
+                "npm install -g @aws-amplify/cli",
+                // Authenticate to ECR Public for Docker base images used during asset bundling
+                "aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws",
+              ],
+            },
+            build: {
+              commands: [
+                "npm run build", // runs: amplify codegen && tsc
+                `npx cdk deploy ${stackName} --require-approval never`,
+              ],
+            },
+          },
         }),
-        // EC2 read-only for Vpc.fromLookup during internal cdk synth
-        new iam.PolicyStatement({
-          actions: ["ec2:Describe*"],
-          resources: ["*"],
-        }),
-        // ECR Public auth for Docker base images
-        new iam.PolicyStatement({
-          actions: [
-            "ecr-public:GetAuthorizationToken",
-            "sts:GetServiceBearerToken",
-          ],
-          resources: ["*"],
+        timeout: cdk.Duration.minutes(60),
+      }
+    );
+
+    // Allow cdk deploy to assume CDK bootstrap roles
+    deployProject.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["sts:AssumeRole"],
+        resources: [`arn:aws:iam::${this.account}:role/cdk-hnb659fds-*`],
+      })
+    );
+
+    // EC2 read-only for Vpc.fromLookup during internal cdk synth
+    deployProject.role?.addManagedPolicy(
+      iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonEC2ReadOnlyAccess")
+    );
+
+    // ECR Public auth for Docker base images
+    deployProject.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "ecr-public:GetAuthorizationToken",
+          "sts:GetServiceBearerToken",
+        ],
+        resources: ["*"],
+      })
+    );
+
+    // ============================================
+    // 5. CodePipeline: Source -> (Approval) -> Deploy
+    // ============================================
+    const sourceOutput = new codepipeline.Artifact("SourceOutput");
+
+    const pipeline = new codepipeline.Pipeline(this, "Pipeline", {
+      // No explicit pipelineName — avoids name collision during the
+      // migration from CDK Pipelines to raw CodePipeline (different
+      // logical IDs, same physical name would fail the update).
+      restartExecutionOnUpdate: false,
+    });
+
+    // --- Source stage ---
+    pipeline.addStage({
+      stageName: "Source",
+      actions: [
+        new codepipeline_actions.CodeCommitSourceAction({
+          actionName: "CodeCommit",
+          repository: repo,
+          branch: pipelineConfig.branch,
+          output: sourceOutput,
         }),
       ],
     });
 
-    // ============================================
-    // 6. Wire up pipeline stages: Approval (optional) -> Deploy
-    // ============================================
+    // --- Approval stage (optional) ---
     if (pipelineConfig.requireApproval) {
-      pipeline.addWave("Approval", {
-        post: [
-          new pipelines.ManualApprovalStep("ApproveDeploy", {
-            comment: `Approve deployment of ${props.config.prefix} GenAI ChatBot. Review changes before proceeding.`,
-            ...(notificationTopic ? { notificationTopic } : {}),
+      pipeline.addStage({
+        stageName: "Approval",
+        actions: [
+          new codepipeline_actions.ManualApprovalAction({
+            actionName: "ApproveDeploy",
+            ...(notificationTopic
+              ? { notificationTopic }
+              : {}),
+            additionalInformation: `Approve deployment of ${props.config.prefix} GenAI ChatBot. Review changes before proceeding.`,
           }),
         ],
       });
     }
 
-    pipeline.addWave("Deploy", {
-      post: [deployStep],
+    // --- Deploy stage ---
+    pipeline.addStage({
+      stageName: "Deploy",
+      actions: [
+        new codepipeline_actions.CodeBuildAction({
+          actionName: "CdkDeploy",
+          project: deployProject,
+          input: sourceOutput,
+        }),
+      ],
     });
 
     // ============================================
-    // 7. Materialize pipeline & attach managed policies
+    // 6. Outputs
     // ============================================
-    pipeline.buildPipeline();
-
-    // Vpc.fromLookup during cdk synth needs broad EC2 read-only access
-    const ec2ReadOnly = iam.ManagedPolicy.fromAwsManagedPolicyName(
-      "AmazonEC2ReadOnlyAccess"
-    );
-    pipeline.synthProject.role?.addManagedPolicy(ec2ReadOnly);
-
     new cdk.CfnOutput(this, "PipelineName", {
-      value: pipeline.pipeline.pipelineName,
+      value: pipeline.pipelineName,
       description: "CodePipeline name",
     });
 
     // ============================================
-    // 8. CDK Nag suppressions for pipeline resources
+    // 7. CDK Nag suppressions
     // ============================================
     NagSuppressions.addStackSuppressions(this, [
       {
         id: "AwsSolutions-IAM5",
         reason:
-          "CDK Pipelines generates IAM policies with wildcards for CodeBuild and CodePipeline actions",
+          "CodeBuild deploy role needs wildcards for CDK bootstrap role assumption and EC2 describe",
       },
       {
         id: "AwsSolutions-CB3",
         reason:
-          "Privileged mode is required for Docker-in-Docker to bundle Lambda layers during cdk synth",
+          "Privileged mode is required for Docker-in-Docker to bundle Lambda layers and React app",
       },
       {
         id: "AwsSolutions-CB4",
         reason:
-          "CDK Pipelines manages CodeBuild encryption settings automatically",
+          "CodeBuild project uses default encryption which is sufficient for CI/CD artifacts",
       },
       {
         id: "AwsSolutions-S1",
         reason:
-          "CDK Pipelines artifact bucket does not require access logging for this use case",
+          "Pipeline artifact bucket does not require access logging for this use case",
       },
     ]);
   }
