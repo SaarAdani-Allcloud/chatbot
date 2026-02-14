@@ -237,6 +237,9 @@ export class HuggingFaceCustomScriptModel extends Construct {
       isCompleteHandler: isCompleteHandler,
       queryInterval: cdk.Duration.seconds(30),
       totalTimeout: cdk.Duration.minutes(120),
+      // VPC configuration for private deployments (required when Lambda is in VPC)
+      vpc: props.vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
     });
     provider.node.addDependency(codeBuildProject);
 

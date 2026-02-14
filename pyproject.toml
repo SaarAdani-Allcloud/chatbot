@@ -78,8 +78,6 @@ post-install-commands = ["pip install -e {root}/lib/shared/layers/python-sdk/pyt
 python = "3.9"
 features = []
 dependencies = [
-  "pytest>=7.3.1",
-  "pytest-mock>=3.10.0",
   "black>=23.3.0",
   "isort>=5.12.0",
   "mypy>=1.3.0",
@@ -89,71 +87,8 @@ env-vars = {"PYTHONPATH" = "{root}:{root}/lib/shared/layers/python-sdk/python"}
 post-install-commands = ["pip install -e {root}"]
 
 [tool.hatch.envs.default.scripts]
-test = "pytest {args:tests}"
 lint = "flake8 lib/shared/layers/python-sdk/python"
 format = "black lib/shared/layers/python-sdk/python"
-
-[tool.hatch.envs.test]
-python = "3.9"
-features = []
-dependencies = [
-  "pytest==7.4.0",
-  "pytest-mock==3.11.1",
-  "pytest-xdist==3.6.1",
-  "pytest-anyio",
-  "pytest-rerunfailures",
-  "gql==3.4.1",
-  "aws_lambda_powertools==2.42.0",
-  "bandit==1.7.9",
-  "pip-audit==2.7.3",
-  "black==24.8.0",
-  "flake8==7.1.0",
-  "selenium==4.16",
-  "pdfplumber==0.11.0",
-  "pyopenssl==24.3.0",
-  "cryptography==44.0.1"
-]
-env-vars = {"PYTHONPATH" = "{root}:{root}/lib/shared/layers/python-sdk/python"}
-
-[tool.hatch.envs.test.scripts]
-run = "pytest {args:tests}"
-coverage = "pytest --cov=lib {args:tests}"
-
-[tool.hatch.envs.nexus]
-python = "3.9"
-features = []
-dependencies = [
-  "ruff==0.3.4",
-  "mypy==1.9.0",
-  "black==24.8.0",
-  "pytest==7.4.0",
-  "pytest-mock==3.11.1",
-  "aws_lambda_powertools==2.42.0"
-]
-env-vars = {"PYTHONPATH" = "{root}:{root}/lib/shared/layers/python-sdk/python"}
-
-[tool.hatch.envs.nexus.scripts]
-# Define helper scripts that output the paths
-nexus-src-paths = "echo lib/shared/layers/python-sdk/python/genai_core/model_providers lib/shared/layers/python-sdk/python/genai_core/models.py lib/shared/layers/python-sdk/python/genai_core/clients.py lib/chatbot-api/functions/api-handler/routes/models.py"
-nexus-test-paths = "echo tests/shared/layers/python-sdk/genai_core/model_providers"
-nexus-all-paths = "echo $(hatch -e nexus run nexus-src-paths) $(hatch -e nexus run nexus-test-paths)"
-
-# Use the helper scripts in the main commands
-lint = [
-  "ruff check $(hatch -e nexus run nexus-all-paths) --fix",
-  "mypy $(hatch -e nexus run nexus-src-paths)"
-]
-format = "ruff format $(hatch -e nexus run nexus-all-paths)"
-test = "pytest $(hatch -e nexus run nexus-test-paths)"
-
-[tool.pytest.ini_options]
-asyncio_mode = "strict"
-asyncio_default_fixture_loop_scope = "function"
-
-pythonpath = [
-    ".",
-    "lib/shared/layers/python-sdk/python"
-]
 
 [tool.ruff]
 line-length = 100

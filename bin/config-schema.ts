@@ -46,6 +46,8 @@ const VpcConfigSchema = z
         "Invalid VPC ID format. Expected: vpc-xxxxxxxx or vpc-xxxxxxxxxxxxxxxxx"
       )
       .optional(),
+    createVpcEndpoints: z.boolean().optional(),
+    vpcDefaultSecurityGroup: z.string().optional(),
     subnetIds: z
       .array(
         z
@@ -234,7 +236,97 @@ const BedrockGuardrailsSchema = z
   );
 
 // ============================================
-// RAG Configuration Schema (OpenSearch & Knowledge Base only)
+// Bedrock Full Configuration Schema
+// ============================================
+const BedrockConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  region: SupportedRegionSchema.optional(),
+  endpointUrl: z.string().url("Invalid Bedrock endpoint URL").optional(),
+  roleArn: z
+    .string()
+    .regex(
+      /^arn:aws:iam::\d{12}:role\/.+$/,
+      "Invalid IAM role ARN format"
+    )
+    .optional()
+    .or(z.literal("")),
+  guardrails: BedrockGuardrailsSchema.optional(),
+});
+
+// ============================================
+// Nexus Gateway Configuration Schema
+// ============================================
+const NexusConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  gatewayUrl: z.string().optional(),
+  tokenUrl: z.string().optional(),
+  clientId: z.string().optional(),
+  clientSecret: z.string().optional(),
+});
+
+// ============================================
+// SageMaker Schedule Schema
+// ============================================
+const SagemakerScheduleSchema = z.object({
+  enabled: z.boolean().optional(),
+  timezonePicker: z.string().optional(),
+  enableCronFormat: z.boolean().optional(),
+  sagemakerCronStartSchedule: z.string().optional(),
+  sagemakerCronStopSchedule: z.string().optional(),
+  daysForSchedule: z.string().optional(),
+  scheduleStartTime: z.string().optional(),
+  scheduleStopTime: z.string().optional(),
+  enableScheduleEndDate: z.boolean().optional(),
+  startScheduleEndDate: z.string().optional(),
+});
+
+// ============================================
+// LLMs Configuration Schema
+// ============================================
+const LlmsConfigSchema = z.object({
+  rateLimitPerIP: z.number().min(10, "Rate limit must be at least 10").optional(),
+  sagemaker: z.array(z.string()).optional(),
+  huggingfaceApiSecretArn: z
+    .string()
+    .regex(
+      /^arn:aws:secretsmanager:[a-z0-9-]+:\d{12}:secret:.+$/,
+      "Invalid Secrets Manager ARN format"
+    )
+    .optional()
+    .or(z.literal("")),
+  sagemakerSchedule: SagemakerScheduleSchema.optional(),
+});
+
+// ============================================
+// External Kendra Index Schema
+// ============================================
+const ExternalKendraIndexSchema = z.object({
+  name: z
+    .string()
+    .min(1, "Kendra index name is required")
+    .regex(
+      /^[a-zA-Z0-9_-]+$/,
+      "Name must contain only alphanumeric characters, hyphens, and underscores"
+    ),
+  kendraId: z
+    .string()
+    .regex(
+      /^\w{8}-\w{4}-\w{4}-\w{4}-\w{12}$/,
+      "Invalid Kendra ID format"
+    ),
+  region: SupportedRegionSchema.optional(),
+  roleArn: z
+    .string()
+    .regex(
+      /^arn:aws:iam::\d{12}:role\/.+$/,
+      "Invalid IAM role ARN format"
+    )
+    .optional(),
+  enabled: z.boolean().optional().default(true),
+});
+
+// ============================================
+// RAG Configuration Schema
 // ============================================
 const ExternalKnowledgeBaseSchema = z.object({
   name: z
@@ -269,12 +361,26 @@ const ModelConfigSchema = z.object({
 const RagConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
+    deployDefaultSagemakerModels: z.boolean().optional(),
     crossEncodingEnabled: z.boolean().optional(),
     engines: z
       .object({
+        aurora: z
+          .object({
+            enabled: z.boolean(),
+          })
+          .optional(),
         opensearch: z
           .object({
             enabled: z.boolean(),
+          })
+          .optional(),
+        kendra: z
+          .object({
+            enabled: z.boolean(),
+            createIndex: z.boolean().optional(),
+            enterprise: z.boolean().optional(),
+            external: z.array(ExternalKendraIndexSchema).optional(),
           })
           .optional(),
         knowledgeBase: z
@@ -292,15 +398,17 @@ const RagConfigSchema = z
     (data) => {
       // If RAG is enabled, at least one engine should be enabled
       if (data.enabled) {
+        const hasAurora = data.engines?.aurora?.enabled;
         const hasOpenSearch = data.engines?.opensearch?.enabled;
+        const hasKendra = data.engines?.kendra?.enabled;
         const hasKnowledgeBase = data.engines?.knowledgeBase?.enabled;
-        return hasOpenSearch || hasKnowledgeBase;
+        return hasAurora || hasOpenSearch || hasKendra || hasKnowledgeBase;
       }
       return true;
     },
     {
       message:
-        "At least one RAG engine (OpenSearch or Knowledge Base) must be enabled when RAG is enabled",
+        "At least one RAG engine must be enabled when RAG is enabled",
       path: ["engines"],
     }
   );
@@ -377,15 +485,9 @@ const PipelineConfigSchema = z.object({
 // ============================================
 /**
  * Deployment manifest schema
- * Contains only the agreed-upon parameters that clients can override via YAML
- *
- * Agreed parameters:
- * - Core: prefix, enableWaf, createCMKs, advancedMonitoring
- * - Website: privateWebsite, certificate, domain
- * - VPC: vpcId, subnetIds, executeApiVpcEndpointId, s3VpcEndpointId, s3VpcEndpointIps
- * - Auth: cognitoFederation (all sub-parameters)
- * - RAG: OpenSearch and Knowledge Base engines only
- * - Guardrails: bedrock.guardrails
+ * Covers ALL SystemConfig parameters for full parity.
+ * All fields except prefix are optional -- only specified fields
+ * override the base config.json values.
  */
 export const DeploymentManifestSchema = z.object({
   // ============================================
@@ -402,9 +504,52 @@ export const DeploymentManifestSchema = z.object({
 
   enableWaf: z.boolean().optional(),
 
+  enableS3TransferAcceleration: z.boolean().optional(),
+
+  directSend: z.boolean().optional(),
+
+  provisionedConcurrency: z.number().int().min(0).optional(),
+
+  caCerts: z.string().optional(),
+
+  cloudfrontLogBucketArn: z
+    .string()
+    .regex(
+      /^arn:aws:s3:::(?!-)[a-z0-9.-]{3,63}(?<!-)$/,
+      "Invalid S3 bucket ARN format"
+    )
+    .optional()
+    .or(z.literal("")),
+
   createCMKs: z.boolean().optional(),
 
+  retainOnDelete: z.boolean().optional(),
+
+  ddbDeletionProtection: z.boolean().optional(),
+
   advancedMonitoring: z.boolean().optional(),
+
+  logRetention: z
+    .number()
+    .int()
+    .refine(
+      (v) =>
+        [
+          1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731,
+          1096, 1827, 2192, 2557, 2922, 3288, 3653,
+        ].includes(v),
+      {
+        message:
+          "Log retention must be one of: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653",
+      }
+    )
+    .optional(),
+
+  rateLimitPerIP: z
+    .number()
+    .int()
+    .min(10, "Rate limit must be at least 10")
+    .optional(),
 
   // ============================================
   // Logging Configuration
@@ -449,6 +594,20 @@ export const DeploymentManifestSchema = z.object({
     .or(z.literal("")),
 
   // ============================================
+  // CloudFront Geo-Restriction
+  // ============================================
+  cfGeoRestrictEnable: z.boolean().optional(),
+
+  cfGeoRestrictList: z
+    .array(
+      z
+        .string()
+        .length(2, "Country code must be exactly 2 characters (ISO 3166-1 alpha-2)")
+        .regex(/^[A-Z]{2}$/, "Country code must be uppercase ISO 3166-1 alpha-2")
+    )
+    .optional(),
+
+  // ============================================
   // VPC/Network Configuration
   // ============================================
   vpc: VpcConfigSchema.optional(),
@@ -459,16 +618,22 @@ export const DeploymentManifestSchema = z.object({
   cognitoFederation: CognitoFederationSchema.optional(),
 
   // ============================================
-  // Bedrock Guardrails
+  // Bedrock Configuration (full)
   // ============================================
-  bedrock: z
-    .object({
-      guardrails: BedrockGuardrailsSchema.optional(),
-    })
-    .optional(),
+  bedrock: BedrockConfigSchema.optional(),
 
   // ============================================
-  // RAG Configuration (OpenSearch & Knowledge Base only)
+  // Nexus Gateway Configuration
+  // ============================================
+  nexus: NexusConfigSchema.optional(),
+
+  // ============================================
+  // LLMs Configuration
+  // ============================================
+  llms: LlmsConfigSchema.optional(),
+
+  // ============================================
+  // RAG Configuration
   // ============================================
   rag: RagConfigSchema.optional(),
 

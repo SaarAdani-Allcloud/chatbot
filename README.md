@@ -2,7 +2,6 @@
 
 This branch contains targeted modifications to the original AWS GenAI LLM Chatbot project, demonstrating how small changes can significantly customize the chatbot experience for Hebrew and RTL language support.
 
-![sample](docs/about/assets/chatbot-demo-hebrew.gif "AWS GenAI Chatbot")
 
 ## Key Customizations
 
@@ -131,10 +130,7 @@ Roadmap is available through the [GitHub Project](https://github.com/orgs/aws-sa
 
 This library is licensed under the MIT-0 License. See the LICENSE file.
 
-- [Changelog](CHANGELOG.md) of the project.
 - [License](LICENSE) of the project.
-- [Code of Conduct](CODE_OF_CONDUCT.md) of the project.
-- [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
 
 Although this repository is released under the MIT-0 license, its front-end and SQL implementation use the following third party projects:
 

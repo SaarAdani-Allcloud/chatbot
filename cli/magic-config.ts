@@ -14,6 +14,8 @@ import {
 } from "../lib/shared/types";
 import { LIB_VERSION } from "./version";
 import * as fs from "fs";
+import * as path from "path";
+import * as yaml from "js-yaml";
 import { AWSCronValidator } from "./aws-cron-validator";
 import { tz } from "moment-timezone";
 import { getData } from "country-list";
@@ -201,6 +203,10 @@ function getTypedEnvVar<T>(
     "--env-prefix <prefix>",
     "Environment variable prefix for non-interactive mode"
   );
+  program.option(
+    "--manifest",
+    "Output deployment-manifest.yaml instead of config.json (also asks pipeline questions)"
+  );
 
   program.action(async (options) => {
     const configFile = resolveConfigFile();
@@ -316,6 +322,108 @@ function getTypedEnvVar<T>(
       options.cognitoDomain = config.cognitoFederation?.cognitoDomain;
       options.cfGeoRestrictEnable = config.cfGeoRestrictEnable;
       options.cfGeoRestrictList = config.cfGeoRestrictList;
+    }
+
+    // If --manifest mode, also try to pre-fill from existing deployment-manifest.yaml
+    if (options.manifest) {
+      const manifestPaths = [
+        "deployment-manifest.yaml",
+        "deployment-manifest.yml",
+      ];
+      for (const mp of manifestPaths) {
+        const resolvedPath = path.resolve(mp);
+        if (fs.existsSync(resolvedPath)) {
+          try {
+            const parsed = yaml.load(
+              fs.readFileSync(resolvedPath, "utf8")
+            ) as any;
+            if (parsed) {
+              // Pre-fill from manifest (manifest takes precedence over config.json)
+              if (parsed.prefix) options.prefix = parsed.prefix;
+              if (parsed.enableWaf !== undefined) options.enableWaf = parsed.enableWaf;
+              if (parsed.enableS3TransferAcceleration !== undefined)
+                options.enableS3TransferAcceleration = parsed.enableS3TransferAcceleration;
+              if (parsed.directSend !== undefined) options.directSend = parsed.directSend;
+              if (parsed.provisionedConcurrency !== undefined)
+                options.provisionedConcurrency = parsed.provisionedConcurrency;
+              if (parsed.cloudfrontLogBucketArn !== undefined)
+                options.cloudfrontLogBucketArn = parsed.cloudfrontLogBucketArn;
+              if (parsed.createCMKs !== undefined) options.createCMKs = parsed.createCMKs;
+              if (parsed.retainOnDelete !== undefined) options.retainOnDelete = parsed.retainOnDelete;
+              if (parsed.ddbDeletionProtection !== undefined)
+                options.ddbDeletionProtection = parsed.ddbDeletionProtection;
+              if (parsed.privateWebsite !== undefined) options.privateWebsite = parsed.privateWebsite;
+              if (parsed.certificate !== undefined) options.certificate = parsed.certificate;
+              if (parsed.domain !== undefined) options.domain = parsed.domain;
+              if (parsed.logRetention !== undefined) options.logRetention = parsed.logRetention;
+              if (parsed.rateLimitPerIP !== undefined) options.rateLimitPerAIP = parsed.rateLimitPerIP;
+              if (parsed.advancedMonitoring !== undefined)
+                options.advancedMonitoring = parsed.advancedMonitoring;
+              if (parsed.cfGeoRestrictEnable !== undefined)
+                options.cfGeoRestrictEnable = parsed.cfGeoRestrictEnable;
+              if (parsed.cfGeoRestrictList !== undefined)
+                options.cfGeoRestrictList = parsed.cfGeoRestrictList;
+              if (parsed.vpc) {
+                if (parsed.vpc.vpcId) options.vpcId = parsed.vpc.vpcId;
+                if (parsed.vpc.subnetIds) options.vpcSubnetIds = parsed.vpc.subnetIds;
+                if (parsed.vpc.createVpcEndpoints !== undefined)
+                  options.createVpcEndpoints = parsed.vpc.createVpcEndpoints;
+                if (parsed.vpc.s3VpcEndpointIps)
+                  options.s3VpcEndpointIps = parsed.vpc.s3VpcEndpointIps;
+                if (parsed.vpc.s3VpcEndpointId)
+                  options.s3VpcEndpointId = parsed.vpc.s3VpcEndpointId;
+                if (parsed.vpc.executeApiVpcEndpointId)
+                  options.executeApiVpcEndpointId = parsed.vpc.executeApiVpcEndpointId;
+              }
+              if (parsed.bedrock) {
+                if (parsed.bedrock.enabled !== undefined) options.bedrockEnable = parsed.bedrock.enabled;
+                if (parsed.bedrock.region) options.bedrockRegion = parsed.bedrock.region;
+                if (parsed.bedrock.roleArn) options.bedrockRoleArn = parsed.bedrock.roleArn;
+                if (parsed.bedrock.guardrails) {
+                  options.guardrailsEnable = parsed.bedrock.guardrails.enabled;
+                  options.guardrails = parsed.bedrock.guardrails;
+                }
+              }
+              if (parsed.nexus) {
+                options.nexusEnable = parsed.nexus.enabled;
+                options.nexusGatewayUrl = parsed.nexus.gatewayUrl;
+                options.nexusTokenUrl = parsed.nexus.tokenUrl;
+                options.nexusAuthClientId = parsed.nexus.clientId;
+                options.nexusAuthClientSecret = parsed.nexus.clientSecret;
+              }
+              if (parsed.cognitoFederation) {
+                options.cognitoFederationEnabled = parsed.cognitoFederation.enabled;
+                options.cognitoCustomProviderName = parsed.cognitoFederation.customProviderName;
+                options.cognitoCustomProviderType = parsed.cognitoFederation.customProviderType;
+                options.cognitoAutoRedirect = parsed.cognitoFederation.autoRedirect;
+                if (parsed.cognitoFederation.customSAML)
+                  options.cognitoCustomProviderSAMLMetadata =
+                    parsed.cognitoFederation.customSAML.metadataDocumentUrl;
+                if (parsed.cognitoFederation.customOIDC) {
+                  options.cognitoCustomProviderOIDCClient = parsed.cognitoFederation.customOIDC.OIDCClient;
+                  options.cognitoCustomProviderOIDCSecret = parsed.cognitoFederation.customOIDC.OIDCSecret;
+                  options.cognitoCustomProviderOIDCIssuerURL = parsed.cognitoFederation.customOIDC.OIDCIssuerURL;
+                }
+              }
+              // Pipeline pre-fill
+              if (parsed.pipeline) {
+                options.pipelineEnabled = parsed.pipeline.enabled;
+                options.pipelineCodecommitCreateNew = parsed.pipeline.codecommit?.createNew;
+                options.pipelineCodecommitRepoName =
+                  parsed.pipeline.codecommit?.newRepositoryName ||
+                  parsed.pipeline.codecommit?.existingRepositoryName;
+                options.pipelineBranch = parsed.pipeline.branch;
+                options.pipelineRequireApproval = parsed.pipeline.requireApproval;
+                options.pipelineNotificationEmail = parsed.pipeline.notificationEmail;
+              }
+              console.log(`\n📄 Pre-filled values from existing ${mp}\n`);
+            }
+          } catch (e) {
+            // Ignore parse errors, will just use config.json defaults
+          }
+          break;
+        }
+      }
     }
 
     try {
@@ -794,7 +902,7 @@ function getTypedEnvVar<T>(
       }
 
       // Interactive mode (original functionality)
-      await processCreateOptions(options);
+      await processCreateOptions(options, !!options.manifest);
     } catch (err) {
       console.error("Could not complete the operation.");
       if (err instanceof Error) {
@@ -818,7 +926,7 @@ function createConfig(config: any): void {
  * @param options Options provided via the CLI
  * @returns The complete options
  */
-async function processCreateOptions(options: any): Promise<void> {
+async function processCreateOptions(options: any, manifestMode: boolean = false): Promise<void> {
   const questions = [
     {
       type: "input",
@@ -2123,19 +2231,247 @@ async function processCreateOptions(options: any): Promise<void> {
   config.rag.engines.knowledgeBase.enabled =
     config.rag.engines.knowledgeBase.external.length > 0;
 
-  console.log("\n✨ This is the chosen configuration:\n");
-  console.log(JSON.stringify(config, undefined, 2));
-  (
-    (await enquirer.prompt([
+  // ============================================
+  // Pipeline Questions (only in --manifest mode)
+  // ============================================
+  let pipelineConfig: any = undefined;
+
+  if (manifestMode) {
+    const pipelineQuestions = [
       {
         type: "confirm",
-        name: "create",
-        message:
-          "Do you want to create/update the configuration based on the above settings",
-        initial: true,
+        name: "pipelineEnabled",
+        message: "Enable CI/CD pipeline (CodeCommit + CodePipeline)?",
+        initial: options.pipelineEnabled ?? false,
       },
-    ])) as any
-  ).create
-    ? createConfig(config)
-    : console.log("Skipping");
+      {
+        type: "confirm",
+        name: "codecommitCreateNew",
+        message: "Create a new CodeCommit repository?",
+        initial: options.pipelineCodecommitCreateNew ?? true,
+        skip(): boolean {
+          return !(this as any).state.answers.pipelineEnabled;
+        },
+      },
+      {
+        type: "input",
+        name: "codecommitRepoName",
+        message(): string {
+          if ((this as any).state.answers.codecommitCreateNew) {
+            return "Name for the new CodeCommit repository";
+          }
+          return "Name of the existing CodeCommit repository";
+        },
+        initial: options.pipelineCodecommitRepoName ?? "aws-genai-llm-chatbot",
+        validate(v: string) {
+          return (this as any).skipped || /^[a-zA-Z0-9._-]+$/.test(v)
+            ? true
+            : "Repository name must contain only alphanumeric characters, dots, hyphens, and underscores";
+        },
+        skip(): boolean {
+          return !(this as any).state.answers.pipelineEnabled;
+        },
+      },
+      {
+        type: "input",
+        name: "pipelineBranch",
+        message: "Branch to monitor for changes",
+        initial: options.pipelineBranch ?? "main",
+        skip(): boolean {
+          return !(this as any).state.answers.pipelineEnabled;
+        },
+      },
+      {
+        type: "confirm",
+        name: "requireApproval",
+        message: "Require manual approval before deployment?",
+        initial: options.pipelineRequireApproval ?? true,
+        skip(): boolean {
+          return !(this as any).state.answers.pipelineEnabled;
+        },
+      },
+      {
+        type: "input",
+        name: "notificationEmail",
+        message: "Notification email for pipeline events (leave empty to skip)",
+        initial: options.pipelineNotificationEmail ?? "",
+        validate(v: string) {
+          if ((this as any).skipped || v === "") return true;
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+            ? true
+            : "Enter a valid email address or leave empty";
+        },
+        skip(): boolean {
+          return !(this as any).state.answers.pipelineEnabled;
+        },
+      },
+    ];
+
+    const pipelineAnswers: any = await enquirer.prompt(pipelineQuestions);
+
+    if (pipelineAnswers.pipelineEnabled) {
+      pipelineConfig = {
+        enabled: true,
+        codecommit: pipelineAnswers.codecommitCreateNew
+          ? {
+              createNew: true,
+              newRepositoryName: pipelineAnswers.codecommitRepoName,
+            }
+          : {
+              existingRepositoryName: pipelineAnswers.codecommitRepoName,
+            },
+        branch: pipelineAnswers.pipelineBranch || "main",
+        requireApproval: pipelineAnswers.requireApproval ?? true,
+        notificationEmail:
+          pipelineAnswers.notificationEmail &&
+          pipelineAnswers.notificationEmail.trim() !== ""
+            ? pipelineAnswers.notificationEmail.trim()
+            : undefined,
+      };
+    }
+  }
+
+  console.log("\n✨ This is the chosen configuration:\n");
+  console.log(JSON.stringify(config, undefined, 2));
+
+  if (manifestMode && pipelineConfig) {
+    console.log("\n🔄 Pipeline configuration:");
+    console.log(JSON.stringify(pipelineConfig, undefined, 2));
+  }
+
+  const confirmAnswer = (await enquirer.prompt([
+    {
+      type: "confirm",
+      name: "create",
+      message:
+        "Do you want to create/update the configuration based on the above settings",
+      initial: true,
+    },
+  ])) as any;
+
+  if (confirmAnswer.create) {
+    // Always write config.json (for local cdk deploy)
+    createConfig(config);
+
+    // If --manifest mode, also write deployment-manifest.yaml
+    if (manifestMode) {
+      writeManifest(config, pipelineConfig);
+    }
+  } else {
+    console.log("Skipping");
+  }
+}
+
+/**
+ * Write deployment-manifest.yaml from the config object + pipeline config
+ */
+function writeManifest(config: any, pipelineConfig: any): void {
+  const manifest: any = {
+    // Core settings
+    prefix: config.prefix,
+    enableWaf: config.enableWaf,
+    enableS3TransferAcceleration: config.enableS3TransferAcceleration,
+    directSend: config.directSend,
+    provisionedConcurrency: config.provisionedConcurrency,
+    createCMKs: config.createCMKs,
+    retainOnDelete: config.retainOnDelete,
+    ddbDeletionProtection: config.ddbDeletionProtection,
+  };
+
+  // Optional strings
+  if (config.caCert) manifest.caCerts = config.caCert;
+  if (config.cloudfrontLogBucketArn)
+    manifest.cloudfrontLogBucketArn = config.cloudfrontLogBucketArn;
+
+  // Advanced / monitoring
+  if (config.advancedMonitoring !== undefined)
+    manifest.advancedMonitoring = config.advancedMonitoring;
+  if (config.logRetention !== undefined)
+    manifest.logRetention = Number(config.logRetention) || undefined;
+  if (config.rateLimitPerAIP !== undefined)
+    manifest.rateLimitPerIP = Number(config.rateLimitPerAIP) || undefined;
+  if (config.privateWebsite !== undefined)
+    manifest.privateWebsite = config.privateWebsite;
+  if (config.certificate) manifest.certificate = config.certificate;
+  if (config.domain) manifest.domain = config.domain;
+
+  // CloudFront Geo Restriction
+  if (config.cfGeoRestrictEnable !== undefined)
+    manifest.cfGeoRestrictEnable = config.cfGeoRestrictEnable;
+  if (config.cfGeoRestrictList && config.cfGeoRestrictList.length > 0)
+    manifest.cfGeoRestrictList = config.cfGeoRestrictList;
+
+  // VPC
+  if (config.vpc) {
+    manifest.vpc = {};
+    if (config.vpc.vpcId) manifest.vpc.vpcId = config.vpc.vpcId;
+    if (config.vpc.createVpcEndpoints !== undefined)
+      manifest.vpc.createVpcEndpoints = config.vpc.createVpcEndpoints;
+    if (config.vpc.subnetIds) manifest.vpc.subnetIds = config.vpc.subnetIds;
+    if (config.vpc.s3VpcEndpointIps)
+      manifest.vpc.s3VpcEndpointIps = config.vpc.s3VpcEndpointIps;
+    if (config.vpc.s3VpcEndpointId)
+      manifest.vpc.s3VpcEndpointId = config.vpc.s3VpcEndpointId;
+    if (config.vpc.executeApiVpcEndpointId)
+      manifest.vpc.executeApiVpcEndpointId =
+        config.vpc.executeApiVpcEndpointId;
+    // Remove empty vpc object
+    if (Object.keys(manifest.vpc).length === 0) delete manifest.vpc;
+  }
+
+  // Cognito Federation
+  if (config.cognitoFederation) {
+    manifest.cognitoFederation = config.cognitoFederation;
+  }
+
+  // Bedrock
+  if (config.bedrock) {
+    manifest.bedrock = config.bedrock;
+  }
+
+  // Nexus
+  if (config.nexus) {
+    manifest.nexus = config.nexus;
+  }
+
+  // LLMs
+  manifest.llms = {};
+  if (config.llms) {
+    if (config.llms.rateLimitPerAIP !== undefined)
+      manifest.llms.rateLimitPerIP = Number(config.llms.rateLimitPerAIP);
+    if (config.llms.sagemaker) manifest.llms.sagemaker = config.llms.sagemaker;
+    if (config.llms.huggingfaceApiSecretArn)
+      manifest.llms.huggingfaceApiSecretArn =
+        config.llms.huggingfaceApiSecretArn;
+    if (config.llms.sagemakerSchedule)
+      manifest.llms.sagemakerSchedule = config.llms.sagemakerSchedule;
+  }
+  if (Object.keys(manifest.llms).length === 0) delete manifest.llms;
+
+  // RAG
+  manifest.rag = {
+    enabled: config.rag.enabled,
+    deployDefaultSagemakerModels: config.rag.deployDefaultSagemakerModels,
+    crossEncodingEnabled: config.rag.crossEncodingEnabled,
+    engines: config.rag.engines,
+    embeddingsModels: config.rag.embeddingsModels,
+    crossEncoderModels: config.rag.crossEncoderModels,
+  };
+
+  // Pipeline
+  if (pipelineConfig) {
+    manifest.pipeline = pipelineConfig;
+  }
+
+  const header = `# ============================================================
+# Deployment Manifest - Generated by magic-config.ts
+# This file overrides values from bin/config.json
+# ============================================================
+`;
+
+  const manifestPath = path.resolve("deployment-manifest.yaml");
+  const yamlContent =
+    header + yaml.dump(manifest, { lineWidth: 120, noRefs: true });
+  fs.writeFileSync(manifestPath, yamlContent);
+  console.log(`\n📄 Manifest written to ${manifestPath}`);
 }

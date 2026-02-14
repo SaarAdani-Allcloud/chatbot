@@ -123,6 +123,20 @@ export class Authentication extends Construct {
         })
       );
 
+      // VPC access permissions (required when Lambda is placed in VPC)
+      lambdaRoleUpdateClient.addToPolicy(
+        new iam.PolicyStatement({
+          actions: [
+            "ec2:CreateNetworkInterface",
+            "ec2:DescribeNetworkInterfaces",
+            "ec2:DeleteNetworkInterface",
+            "ec2:AssignPrivateIpAddresses",
+            "ec2:UnassignPrivateIpAddresses",
+          ],
+          resources: ["*"],
+        })
+      );
+
       // Define a Lambda function to update the UserPoolClient
       const updateUserPoolClientLambda = new lambda.Function(
         this,
@@ -215,6 +229,20 @@ export class Authentication extends Construct {
           })
         );
 
+        // VPC access permissions (required when Lambda is placed in VPC)
+        lambdaRoleUpdateOidcSecret.addToPolicy(
+          new iam.PolicyStatement({
+            actions: [
+              "ec2:CreateNetworkInterface",
+              "ec2:DescribeNetworkInterfaces",
+              "ec2:DeleteNetworkInterface",
+              "ec2:AssignPrivateIpAddresses",
+              "ec2:UnassignPrivateIpAddresses",
+            ],
+            resources: ["*"],
+          })
+        );
+
         const oidcSecretlambdaFunction = new lambda.Function(
           this,
           "OIDCSecretsHandler",
@@ -257,6 +285,9 @@ export class Authentication extends Construct {
               resources: [oidcSecretlambdaFunction.functionArn],
             }),
           ]),
+          // VPC configuration for private deployments (required when Lambda is in VPC)
+          vpc: shared.vpc,
+          vpcSubnets: shared.vpcSubnets,
         });
       }
       if (config.cognitoFederation?.customProviderType == "SAML") {

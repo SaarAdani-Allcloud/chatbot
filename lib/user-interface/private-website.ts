@@ -97,6 +97,9 @@ export class PrivateWebsite extends Construct {
           }),
         ],
       },
+      // VPC configuration for private deployments (required when Lambda is in VPC)
+      vpc: props.shared.vpc,
+      vpcSubnets: props.shared.vpcSubnets,
     });
 
     if (props.config.vpc?.createVpcEndpoints) {
@@ -136,6 +139,9 @@ export class PrivateWebsite extends Construct {
               }),
             ],
           },
+          // VPC configuration for private deployments (required when Lambda is in VPC)
+          vpc: props.shared.vpc,
+          vpcSubnets: props.shared.vpcSubnets,
         }
       );
 

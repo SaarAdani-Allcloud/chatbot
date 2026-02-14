@@ -48,8 +48,8 @@ export class LambdaVpcAspect implements cdk.IAspect {
       return;
     }
 
-    // Add VPC permissions and get the role resource for dependency
-    const roleResource = this.addVpcPermissionsToRole(fn.node.scope);
+    // Add VPC permissions to the Lambda's actual role (not searching in parent scope)
+    const roleResource = this.addVpcPermissionsToLambdaRole(fn);
 
     // Apply VPC configuration
     cfnFunction.addPropertyOverride('VpcConfig', {
@@ -61,6 +61,30 @@ export class LambdaVpcAspect implements cdk.IAspect {
     if (roleResource) {
       cfnFunction.addDependency(roleResource);
     }
+  }
+
+  /**
+   * Add VPC permissions directly to the Lambda function's role.
+   * This handles both auto-created roles and explicitly passed roles.
+   */
+  private addVpcPermissionsToLambdaRole(fn: lambda.Function): cdk.CfnResource | undefined {
+    // Lambda functions have a 'role' property that references their execution role
+    const role = fn.role;
+    if (!role) return undefined;
+
+    // Handle iam.Role (most common case - auto-created or explicitly passed)
+    if (role instanceof iam.Role) {
+      return this.addManagedVpcPolicy(role);
+    }
+
+    // For other IRole implementations, try to find the underlying CfnRole
+    const defaultChild = role.node?.defaultChild;
+    if (defaultChild) {
+      return this.addManagedVpcPolicy(defaultChild as IConstruct);
+    }
+
+    // Fallback: search in parent scope (legacy behavior for edge cases)
+    return this.addVpcPermissionsToRole(fn.node.scope);
   }
 
   private configureCfnFunction(cfnFunction: lambda.CfnFunction): void {

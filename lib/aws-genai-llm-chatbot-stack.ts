@@ -218,6 +218,9 @@ export class AwsGenAILLMChatbotStack extends cdk.Stack {
           policy: cr.AwsCustomResourcePolicy.fromStatements([
             lambdaInvokePolicyStatement,
           ]),
+          // VPC configuration for private deployments (required when Lambda is in VPC)
+          vpc: shared.vpc,
+          vpcSubnets: shared.vpcSubnets,
         }
       );
 

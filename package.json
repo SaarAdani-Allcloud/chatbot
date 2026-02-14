@@ -9,7 +9,6 @@
     "node": ">=18.0.0 <21.0.0"
   },
   "files": [
-    "aws-genai-llm-chatbot",
     "bin",
     "lib",
     "cdk.json"
@@ -21,18 +20,6 @@
     "deploy": "npx cdk deploy",
     "hotswap": "cdk deploy --hotswap",
     "watch": "cdk watch",
-    "test": "jest",
-    "pytest": "pytest tests/",
-    "prepack": "./scripts/vend-prep.sh --pre",
-    "postpack": "./scripts/vend-prep.sh --post",
-    "test-all": "npm run test && npm run pytest",
-    "integtest": "pytest integtests/",
-    "test:integration": "python -m pytest tests/integration/ -xvs",
-    "test:integration:beta": "source .env.beta && python -m pytest tests/integration/nexus/test_nexus_model_transform.py tests/integration/nexus/test_graphql_integration.py -vs",
-    "test:nexus": "source .env.beta && NEXUS_ENABLE=true python -m pytest tests/integration/nexus/ -xvs",
-    "test:nexus:beta": "source .env.beta && python -m pytest tests/integration/nexus/ -xvs",
-    "test:nexus:alpha": "source .env.alpha &&python -m pytest tests/integration/nexus/ -xvs",
-    "test:nexus:transform": "source .env.beta && python -m pytest tests/integration/nexus/test_nexus_model_transform.py tests/integration/nexus/test_graphql_integration.py -v",
     "gen": "amplify codegen",
     "create": "node ./dist/cli/magic.js config",
     "config": "node ./dist/cli/magic.js config",
@@ -40,12 +27,7 @@
     "pylint": "flake8 .",
     "format": "prettier --ignore-path .gitignore --write \"**/*.+(js|ts|jsx|tsx|json|css)\"",
     "pyformat": "black .",
-    "format-lint-all": "npm run format && npm run pyformat && npm run lint && npm run pylint",
-    "vet-all": "npm run format-lint-all && npm run test-all",
-    "docs:dev": "vitepress dev docs",
-    "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs",
-    "set-user-default-application-id": ". scripts/tools.sh && update_user_default_application"
+    "format-lint-all": "npm run format && npm run pyformat && npm run lint && npm run pylint"
   },
   "devDependencies": {
     "@aws-amplify/cli": "^12.10.1",
@@ -59,7 +41,6 @@
     "@aws-sdk/signature-v4": "^3.374.0",
     "@types/aws-lambda": "^8.10.125",
     "@types/country-list": "^2.1.4",
-    "@types/jest": "^29.5.12",
     "@types/js-yaml": "^4.0.9",
     "@types/minimatch": "^5.1.2",
     "@types/node": "20.1.7",
@@ -73,12 +54,9 @@
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.9",
     "graphql": "^16.8.1",
-    "jest": "^29.7.0",
     "prettier": "^3.0.3",
-    "ts-jest": "^29.2.3",
     "ts-node": "^10.9.1",
-    "typescript": "~5.1.3",
-    "vitepress": "^1.6.3"
+    "typescript": "~5.1.3"
   },
   "dependencies": {
     "@aws-cdk/aws-apigatewayv2-alpha": "^2.114.1-alpha.0",
@@ -102,23 +80,6 @@
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "4.6.1"
-  },
-  "jest": {
-    "testMatch": [
-      "**/**.test.ts",
-      "**/**.test.js"
-    ],
-    "testPathIgnorePatterns": [
-      "lib/user-interface/react-app",
-      "dist"
-    ],
-    "transform": {
-      ".(js|ts)": "ts-jest"
-    },
-    "transformIgnorePatterns": [
-      "[/\\\\]node_modules[/\\\\].+\\.(js|jsx|ts|tsx|json)$",
-      "package.json"
-    ]
   },
   "overrides": {
     "esbuild": "0.25.0"

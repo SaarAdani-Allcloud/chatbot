@@ -10,9 +10,9 @@ This document summarizes the changes made to automatically associate all Lambda 
 - **Features**:
   - Checks if Lambda functions already have VPC configuration
   - Automatically associates Lambda functions with VPC, subnets, and security groups
-  - **Automatically adds AWS managed policies to Lambda execution roles:**
-    - `AWSLambdaVPCAccessExecutionRole` for VPC networking
-    - `AWSLambdaBasicExecutionRole` for CloudWatch Logs
+  - **Automatically adds AWS managed policy `AWSLambdaVPCAccessExecutionRole` to Lambda execution roles**
+  - **Directly accesses each Lambda's actual role** (via `fn.role`) instead of searching parent scope
+  - Handles both auto-created roles and explicitly passed roles
   - Provides skip logic to avoid modifying functions with explicit VPC configuration
   - Adds metadata tracking for aspect application
 
@@ -109,6 +109,45 @@ This document summarizes the changes made to automatically associate all Lambda 
 - **New deployments**: All Lambda functions will automatically be in the VPC
 - **Backward compatibility**: Functions with explicit VPC configuration are not modified
 - **VPC endpoints**: Will be created automatically unless disabled in configuration
+
+## AwsCustomResource and cr.Provider VPC Configuration
+
+The CDK Aspect handles regular `lambda.Function` constructs, but `AwsCustomResource` and `cr.Provider` constructs create their own internal singleton Lambda functions that require explicit VPC configuration. The following resources have been updated with explicit VPC settings:
+
+### Updated Files
+
+1. **`lib/authentication/index.ts`**
+   - `AwsCustomResource` for "UpdateSecret" (OIDC): Added `vpc` and `vpcSubnets`
+   - Added VPC permissions to `lambdaRoleUpdateClient` and `lambdaRoleUpdateOidcSecret`
+
+2. **`lib/aws-genai-llm-chatbot-stack.ts`**
+   - `AwsCustomResource` for "UpdateUserPoolClientCustomResource": Added `vpc` and `vpcSubnets`
+
+3. **`lib/user-interface/private-website.ts`**
+   - `AwsCustomResource` for "describeVpcEndpoints": Added `vpc` and `vpcSubnets`
+   - `AwsCustomResource` for "DescribeNetworkInterfaces": Added `vpc` and `vpcSubnets`
+
+4. **`lib/sagemaker-model/hf-custom-script-model/index.ts`**
+   - `cr.Provider` for HuggingFace model builds: Added `vpc` and `vpcSubnets`
+
+### Why This Is Needed
+
+- `AwsCustomResource` creates an internal singleton Lambda that makes AWS SDK calls
+- When deployed in a VPC without NAT gateway, these Lambda functions need VPC endpoints for AWS service connectivity
+- The CDK Aspect may not properly find and configure the roles for these singleton providers
+- Explicit VPC configuration ensures the Lambda functions are created in the correct network context
+
+### Cognito Federation Lambdas
+
+The following Cognito federation-related Lambdas now have proper VPC configuration:
+
+| Lambda | VPC Config Source | IAM VPC Permissions |
+|--------|-------------------|---------------------|
+| `updateUserPoolClientLambda` | Via Aspect | Explicit in role |
+| `OIDCSecretsHandler` | Via Aspect | Explicit in role |
+| `addFederatedUserToUserGroup` | Via Aspect | Explicit in role |
+| `UpdateSecret` (AwsCustomResource) | Explicit | Via AwsCustomResource |
+| `UpdateUserPoolClientCustomResource` | Explicit | Via AwsCustomResource |
 
 ## Next Steps
 

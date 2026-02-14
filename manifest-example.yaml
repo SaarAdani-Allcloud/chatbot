@@ -621,9 +621,6 @@ pipeline:
 # END OF MANIFEST EXAMPLE
 # ================================================================================
 #
-# For detailed documentation on all parameters, see:
-#   docs/MANIFEST-PARAMETERS.md
-#
 # For the schema validation rules, see:
 #   bin/config-schema.ts
 #

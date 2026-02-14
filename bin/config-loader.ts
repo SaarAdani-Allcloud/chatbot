@@ -120,10 +120,59 @@ function applyManifestOverrides(
     overrideCount++;
   }
 
+  // enableS3TransferAcceleration
+  if (manifest.enableS3TransferAcceleration !== undefined) {
+    logOverride("enableS3TransferAcceleration", config.enableS3TransferAcceleration, manifest.enableS3TransferAcceleration);
+    config.enableS3TransferAcceleration = manifest.enableS3TransferAcceleration;
+    overrideCount++;
+  }
+
+  // directSend
+  if (manifest.directSend !== undefined) {
+    logOverride("directSend", config.directSend, manifest.directSend);
+    config.directSend = manifest.directSend;
+    overrideCount++;
+  }
+
+  // provisionedConcurrency
+  if (manifest.provisionedConcurrency !== undefined) {
+    logOverride("provisionedConcurrency", config.provisionedConcurrency, manifest.provisionedConcurrency);
+    config.provisionedConcurrency = manifest.provisionedConcurrency;
+    overrideCount++;
+  }
+
+  // caCerts
+  if (manifest.caCerts !== undefined) {
+    logOverride("caCerts", config.caCerts, manifest.caCerts);
+    config.caCerts = manifest.caCerts;
+    overrideCount++;
+  }
+
+  // cloudfrontLogBucketArn
+  if (manifest.cloudfrontLogBucketArn !== undefined && manifest.cloudfrontLogBucketArn !== "") {
+    logOverride("cloudfrontLogBucketArn", config.cloudfrontLogBucketArn, manifest.cloudfrontLogBucketArn);
+    config.cloudfrontLogBucketArn = manifest.cloudfrontLogBucketArn;
+    overrideCount++;
+  }
+
   // createCMKs
   if (manifest.createCMKs !== undefined) {
     logOverride("createCMKs", config.createCMKs, manifest.createCMKs);
     config.createCMKs = manifest.createCMKs;
+    overrideCount++;
+  }
+
+  // retainOnDelete
+  if (manifest.retainOnDelete !== undefined) {
+    logOverride("retainOnDelete", config.retainOnDelete, manifest.retainOnDelete);
+    config.retainOnDelete = manifest.retainOnDelete;
+    overrideCount++;
+  }
+
+  // ddbDeletionProtection
+  if (manifest.ddbDeletionProtection !== undefined) {
+    logOverride("ddbDeletionProtection", config.ddbDeletionProtection, manifest.ddbDeletionProtection);
+    config.ddbDeletionProtection = manifest.ddbDeletionProtection;
     overrideCount++;
   }
 
@@ -135,6 +184,20 @@ function applyManifestOverrides(
       manifest.advancedMonitoring
     );
     config.advancedMonitoring = manifest.advancedMonitoring;
+    overrideCount++;
+  }
+
+  // logRetention
+  if (manifest.logRetention !== undefined) {
+    logOverride("logRetention", config.logRetention, manifest.logRetention);
+    config.logRetention = manifest.logRetention;
+    overrideCount++;
+  }
+
+  // rateLimitPerIP
+  if (manifest.rateLimitPerIP !== undefined) {
+    logOverride("rateLimitPerIP", config.rateLimitPerIP, manifest.rateLimitPerIP);
+    config.rateLimitPerIP = manifest.rateLimitPerIP;
     overrideCount++;
   }
 
@@ -186,6 +249,24 @@ function applyManifestOverrides(
   if (manifest.domain !== undefined) {
     logOverride("domain", config.domain, manifest.domain);
     config.domain = manifest.domain;
+    overrideCount++;
+  }
+
+  // ============================================
+  // CloudFront Geo-Restriction
+  // ============================================
+
+  // cfGeoRestrictEnable
+  if (manifest.cfGeoRestrictEnable !== undefined) {
+    logOverride("cfGeoRestrictEnable", config.cfGeoRestrictEnable, manifest.cfGeoRestrictEnable);
+    config.cfGeoRestrictEnable = manifest.cfGeoRestrictEnable;
+    overrideCount++;
+  }
+
+  // cfGeoRestrictList
+  if (manifest.cfGeoRestrictList !== undefined) {
+    logOverride("cfGeoRestrictList", config.cfGeoRestrictList, manifest.cfGeoRestrictList);
+    config.cfGeoRestrictList = manifest.cfGeoRestrictList;
     overrideCount++;
   }
 
@@ -243,6 +324,20 @@ function applyManifestOverrides(
         manifest.vpc.s3VpcEndpointIps
       );
       config.vpc.s3VpcEndpointIps = manifest.vpc.s3VpcEndpointIps;
+      overrideCount++;
+    }
+
+    // vpc.createVpcEndpoints
+    if (manifest.vpc.createVpcEndpoints !== undefined) {
+      logOverride("vpc.createVpcEndpoints", config.vpc.createVpcEndpoints, manifest.vpc.createVpcEndpoints);
+      config.vpc.createVpcEndpoints = manifest.vpc.createVpcEndpoints;
+      overrideCount++;
+    }
+
+    // vpc.vpcDefaultSecurityGroup
+    if (manifest.vpc.vpcDefaultSecurityGroup !== undefined) {
+      logOverride("vpc.vpcDefaultSecurityGroup", config.vpc.vpcDefaultSecurityGroup, manifest.vpc.vpcDefaultSecurityGroup);
+      config.vpc.vpcDefaultSecurityGroup = manifest.vpc.vpcDefaultSecurityGroup;
       overrideCount++;
     }
   }
@@ -378,61 +473,128 @@ function applyManifestOverrides(
   }
 
   // ============================================
-  // Bedrock Guardrails
+  // Bedrock Configuration (full)
   // ============================================
 
-  if (manifest.bedrock?.guardrails !== undefined) {
-    // Initialize bedrock object if not exists
+  if (manifest.bedrock !== undefined) {
     if (!config.bedrock) {
       config.bedrock = {};
     }
 
-    // Initialize guardrails object if not exists
-    if (!config.bedrock.guardrails) {
-      config.bedrock.guardrails = {
-        enabled: false,
-        identifier: "",
-        version: "",
-      };
-    }
-
-    // bedrock.guardrails.enabled
-    if (manifest.bedrock.guardrails.enabled !== undefined) {
-      logOverride(
-        "bedrock.guardrails.enabled",
-        config.bedrock.guardrails.enabled,
-        manifest.bedrock.guardrails.enabled
-      );
-      config.bedrock.guardrails.enabled = manifest.bedrock.guardrails.enabled;
+    if (manifest.bedrock.enabled !== undefined) {
+      logOverride("bedrock.enabled", config.bedrock.enabled, manifest.bedrock.enabled);
+      config.bedrock.enabled = manifest.bedrock.enabled;
       overrideCount++;
     }
 
-    // bedrock.guardrails.identifier
-    if (manifest.bedrock.guardrails.identifier !== undefined) {
-      logOverride(
-        "bedrock.guardrails.identifier",
-        config.bedrock.guardrails.identifier,
-        manifest.bedrock.guardrails.identifier
-      );
-      config.bedrock.guardrails.identifier =
-        manifest.bedrock.guardrails.identifier;
+    if (manifest.bedrock.region !== undefined) {
+      logOverride("bedrock.region", config.bedrock.region, manifest.bedrock.region);
+      config.bedrock.region = manifest.bedrock.region as any;
       overrideCount++;
     }
 
-    // bedrock.guardrails.version
-    if (manifest.bedrock.guardrails.version !== undefined) {
-      logOverride(
-        "bedrock.guardrails.version",
-        config.bedrock.guardrails.version,
-        manifest.bedrock.guardrails.version
-      );
-      config.bedrock.guardrails.version = manifest.bedrock.guardrails.version;
+    if (manifest.bedrock.endpointUrl !== undefined) {
+      logOverride("bedrock.endpointUrl", config.bedrock.endpointUrl, manifest.bedrock.endpointUrl);
+      config.bedrock.endpointUrl = manifest.bedrock.endpointUrl;
+      overrideCount++;
+    }
+
+    if (manifest.bedrock.roleArn !== undefined && manifest.bedrock.roleArn !== "") {
+      logOverride("bedrock.roleArn", config.bedrock.roleArn, manifest.bedrock.roleArn);
+      config.bedrock.roleArn = manifest.bedrock.roleArn;
+      overrideCount++;
+    }
+
+    if (manifest.bedrock.guardrails !== undefined) {
+      if (!config.bedrock.guardrails) {
+        config.bedrock.guardrails = { enabled: false, identifier: "", version: "" };
+      }
+
+      if (manifest.bedrock.guardrails.enabled !== undefined) {
+        logOverride("bedrock.guardrails.enabled", config.bedrock.guardrails.enabled, manifest.bedrock.guardrails.enabled);
+        config.bedrock.guardrails.enabled = manifest.bedrock.guardrails.enabled;
+        overrideCount++;
+      }
+
+      if (manifest.bedrock.guardrails.identifier !== undefined) {
+        logOverride("bedrock.guardrails.identifier", config.bedrock.guardrails.identifier, manifest.bedrock.guardrails.identifier);
+        config.bedrock.guardrails.identifier = manifest.bedrock.guardrails.identifier;
+        overrideCount++;
+      }
+
+      if (manifest.bedrock.guardrails.version !== undefined) {
+        logOverride("bedrock.guardrails.version", config.bedrock.guardrails.version, manifest.bedrock.guardrails.version);
+        config.bedrock.guardrails.version = manifest.bedrock.guardrails.version;
+        overrideCount++;
+      }
+    }
+  }
+
+  // ============================================
+  // Nexus Gateway Configuration
+  // ============================================
+
+  if (manifest.nexus !== undefined) {
+    if (!config.nexus) {
+      config.nexus = {};
+    }
+
+    if (manifest.nexus.enabled !== undefined) {
+      logOverride("nexus.enabled", config.nexus.enabled, manifest.nexus.enabled);
+      config.nexus.enabled = manifest.nexus.enabled;
+      overrideCount++;
+    }
+    if (manifest.nexus.gatewayUrl !== undefined) {
+      logOverride("nexus.gatewayUrl", config.nexus.gatewayUrl, manifest.nexus.gatewayUrl);
+      config.nexus.gatewayUrl = manifest.nexus.gatewayUrl;
+      overrideCount++;
+    }
+    if (manifest.nexus.tokenUrl !== undefined) {
+      logOverride("nexus.tokenUrl", config.nexus.tokenUrl, manifest.nexus.tokenUrl);
+      config.nexus.tokenUrl = manifest.nexus.tokenUrl;
+      overrideCount++;
+    }
+    if (manifest.nexus.clientId !== undefined) {
+      logOverride("nexus.clientId", config.nexus.clientId, manifest.nexus.clientId);
+      config.nexus.clientId = manifest.nexus.clientId;
+      overrideCount++;
+    }
+    if (manifest.nexus.clientSecret !== undefined) {
+      logOverride("nexus.clientSecret", config.nexus.clientSecret, manifest.nexus.clientSecret);
+      config.nexus.clientSecret = manifest.nexus.clientSecret;
       overrideCount++;
     }
   }
 
   // ============================================
-  // RAG Configuration (OpenSearch & Knowledge Base)
+  // LLMs Configuration
+  // ============================================
+
+  if (manifest.llms !== undefined) {
+    if (manifest.llms.rateLimitPerIP !== undefined) {
+      logOverride("llms.rateLimitPerIP", config.llms.rateLimitPerIP, manifest.llms.rateLimitPerIP);
+      config.llms.rateLimitPerIP = manifest.llms.rateLimitPerIP;
+      overrideCount++;
+    }
+    if (manifest.llms.sagemaker !== undefined) {
+      logOverride("llms.sagemaker", config.llms.sagemaker, manifest.llms.sagemaker);
+      config.llms.sagemaker = manifest.llms.sagemaker as any;
+      overrideCount++;
+    }
+    if (manifest.llms.huggingfaceApiSecretArn !== undefined && manifest.llms.huggingfaceApiSecretArn !== "") {
+      logOverride("llms.huggingfaceApiSecretArn", config.llms.huggingfaceApiSecretArn, manifest.llms.huggingfaceApiSecretArn);
+      config.llms.huggingfaceApiSecretArn = manifest.llms.huggingfaceApiSecretArn;
+      overrideCount++;
+    }
+    if (manifest.llms.sagemakerSchedule !== undefined) {
+      logOverride("llms.sagemakerSchedule", config.llms.sagemakerSchedule, manifest.llms.sagemakerSchedule);
+      config.llms.sagemakerSchedule = manifest.llms.sagemakerSchedule;
+      overrideCount++;
+    }
+  }
+
+  // ============================================
+  // RAG Configuration
   // ============================================
 
   if (manifest.rag !== undefined) {
@@ -440,6 +602,13 @@ function applyManifestOverrides(
     if (manifest.rag.enabled !== undefined) {
       logOverride("rag.enabled", config.rag.enabled, manifest.rag.enabled);
       config.rag.enabled = manifest.rag.enabled;
+      overrideCount++;
+    }
+
+    // rag.deployDefaultSagemakerModels
+    if (manifest.rag.deployDefaultSagemakerModels !== undefined) {
+      logOverride("rag.deployDefaultSagemakerModels", config.rag.deployDefaultSagemakerModels, manifest.rag.deployDefaultSagemakerModels);
+      config.rag.deployDefaultSagemakerModels = manifest.rag.deployDefaultSagemakerModels;
       overrideCount++;
     }
 
@@ -456,6 +625,15 @@ function applyManifestOverrides(
 
     // rag.engines
     if (manifest.rag.engines !== undefined) {
+      // rag.engines.aurora
+      if (manifest.rag.engines.aurora !== undefined) {
+        if (manifest.rag.engines.aurora.enabled !== undefined) {
+          logOverride("rag.engines.aurora.enabled", config.rag.engines.aurora.enabled, manifest.rag.engines.aurora.enabled);
+          config.rag.engines.aurora.enabled = manifest.rag.engines.aurora.enabled;
+          overrideCount++;
+        }
+      }
+
       // rag.engines.opensearch
       if (manifest.rag.engines.opensearch !== undefined) {
         if (manifest.rag.engines.opensearch.enabled !== undefined) {
@@ -466,6 +644,30 @@ function applyManifestOverrides(
           );
           config.rag.engines.opensearch.enabled =
             manifest.rag.engines.opensearch.enabled;
+          overrideCount++;
+        }
+      }
+
+      // rag.engines.kendra
+      if (manifest.rag.engines.kendra !== undefined) {
+        if (manifest.rag.engines.kendra.enabled !== undefined) {
+          logOverride("rag.engines.kendra.enabled", config.rag.engines.kendra.enabled, manifest.rag.engines.kendra.enabled);
+          config.rag.engines.kendra.enabled = manifest.rag.engines.kendra.enabled;
+          overrideCount++;
+        }
+        if (manifest.rag.engines.kendra.createIndex !== undefined) {
+          logOverride("rag.engines.kendra.createIndex", config.rag.engines.kendra.createIndex, manifest.rag.engines.kendra.createIndex);
+          config.rag.engines.kendra.createIndex = manifest.rag.engines.kendra.createIndex;
+          overrideCount++;
+        }
+        if (manifest.rag.engines.kendra.enterprise !== undefined) {
+          logOverride("rag.engines.kendra.enterprise", config.rag.engines.kendra.enterprise, manifest.rag.engines.kendra.enterprise);
+          config.rag.engines.kendra.enterprise = manifest.rag.engines.kendra.enterprise;
+          overrideCount++;
+        }
+        if (manifest.rag.engines.kendra.external !== undefined) {
+          logOverride("rag.engines.kendra.external", config.rag.engines.kendra.external, manifest.rag.engines.kendra.external);
+          config.rag.engines.kendra.external = manifest.rag.engines.kendra.external as typeof config.rag.engines.kendra.external;
           overrideCount++;
         }
       }
