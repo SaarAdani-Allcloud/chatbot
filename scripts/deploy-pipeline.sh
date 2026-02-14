@@ -507,9 +507,9 @@ if [[ -f "bin/config.json" ]]; then
   GITIGNORED_FILES+=("bin/config.json")
 fi
 
-if [[ -f "cdk.context.json" ]]; then
-  git add -f cdk.context.json
-  GITIGNORED_FILES+=("cdk.context.json")
+if [[ -f "deployment-manifest.yaml" ]]; then
+  git add -f deployment-manifest.yaml
+  GITIGNORED_FILES+=("deployment-manifest.yaml")
 fi
 
 if [[ ${#GITIGNORED_FILES[@]} -gt 0 ]]; then

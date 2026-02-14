@@ -229,6 +229,7 @@ function getTypedEnvVar<T>(
       options.vpcSubnetIds = config.vpc?.subnetIds;
       options.bedrockEnable = config.bedrock?.enabled;
       options.bedrockRegion = config.bedrock?.region;
+      options.bedrockEndpointUrl = config.bedrock?.endpointUrl;
       options.bedrockRoleArn = config.bedrock?.roleArn;
       options.guardrailsEnable = config.bedrock?.guardrails?.enabled;
       options.guardrails = config.bedrock?.guardrails;
@@ -293,7 +294,9 @@ function getTypedEnvVar<T>(
       options.kendraEnterprise = config.rag.engines.kendra.enterprise;
 
       // Advanced settings
-
+      options.disableS3AccessLogs = config.disableS3AccessLogs;
+      options.logArchiveBucketName = config.logArchiveBucketName;
+      options.crossEncodingEnabled = config.rag.crossEncodingEnabled;
       options.advancedMonitoring = config.advancedMonitoring;
       options.createVpcEndpoints = config.vpc?.createVpcEndpoints;
       options.s3VpcEndpointIps = config.vpc?.s3VpcEndpointIps;
@@ -375,9 +378,16 @@ function getTypedEnvVar<T>(
                 if (parsed.vpc.executeApiVpcEndpointId)
                   options.executeApiVpcEndpointId = parsed.vpc.executeApiVpcEndpointId;
               }
+              if (parsed.disableS3AccessLogs !== undefined)
+                options.disableS3AccessLogs = parsed.disableS3AccessLogs;
+              if (parsed.logArchiveBucketName !== undefined)
+                options.logArchiveBucketName = parsed.logArchiveBucketName;
+              if (parsed.rag?.crossEncodingEnabled !== undefined)
+                options.crossEncodingEnabled = parsed.rag.crossEncodingEnabled;
               if (parsed.bedrock) {
                 if (parsed.bedrock.enabled !== undefined) options.bedrockEnable = parsed.bedrock.enabled;
                 if (parsed.bedrock.region) options.bedrockRegion = parsed.bedrock.region;
+                if (parsed.bedrock.endpointUrl) options.bedrockEndpointUrl = parsed.bedrock.endpointUrl;
                 if (parsed.bedrock.roleArn) options.bedrockRoleArn = parsed.bedrock.roleArn;
                 if (parsed.bedrock.guardrails) {
                   options.guardrailsEnable = parsed.bedrock.guardrails.enabled;
@@ -1095,6 +1105,16 @@ async function processCreateOptions(options: any, manifestMode: boolean = false)
       },
     },
     {
+      type: "input",
+      name: "bedrockEndpointUrl",
+      message:
+        "Custom Bedrock endpoint URL - leave empty to use the default regional endpoint",
+      initial: options.bedrockEndpointUrl ?? "",
+      skip() {
+        return !(this as any).state.answers.bedrockEnable;
+      },
+    },
+    {
       type: "confirm",
       name: "guardrailsEnable",
       message:
@@ -1726,6 +1746,37 @@ async function processCreateOptions(options: any, manifestMode: boolean = false)
     },
     {
       type: "confirm",
+      name: "disableS3AccessLogs",
+      message:
+        "Disable S3 server access log buckets? (Enable this if you use CloudTrail data events instead)",
+      initial: options.disableS3AccessLogs || false,
+    },
+    {
+      type: "input",
+      name: "logArchiveBucketName",
+      message:
+        "Centralized log archive S3 bucket name for ALB access logs (leave empty to skip)",
+      hint: "e.g. logarchive-chatbotbucket-prod",
+      initial: options.logArchiveBucketName ?? "",
+      validate(v: string) {
+        if ((this as any).skipped || v === "") return true;
+        const regex = /^[a-z0-9][a-z0-9.-]*[a-z0-9]$/;
+        return regex.test(v)
+          ? true
+          : "Invalid S3 bucket name. Must start and end with lowercase letter or number.";
+      },
+    },
+    {
+      type: "confirm",
+      name: "crossEncodingEnabled",
+      message: "Do you want to enable cross-encoding for RAG?",
+      initial: options.crossEncodingEnabled || false,
+      skip(): boolean {
+        return !answers.enableRag;
+      },
+    },
+    {
+      type: "confirm",
       name: "createVpcEndpoints",
       message: "Do you want create VPC Endpoints?",
       initial: options.createVpcEndpoints || false,
@@ -1993,6 +2044,17 @@ async function processCreateOptions(options: any, manifestMode: boolean = false)
       initial: options.cognitoAutoRedirect || false,
     },
     {
+      type: "input",
+      name: "cognitoDomain",
+      message:
+        "Cognito domain prefix (leave empty to auto-generate)",
+      hint: "e.g. my-chatbot-auth",
+      skip(): boolean {
+        return !(this as any).state.answers.cognitoFederationEnabled;
+      },
+      initial: options.cognitoDomain || "",
+    },
+    {
       type: "confirm",
       name: "cfGeoRestrictEnable",
       message:
@@ -2062,10 +2124,13 @@ async function processCreateOptions(options: any, manifestMode: boolean = false)
     enableWaf: answers.enableWaf,
     directSend: answers.directSend,
     provisionedConcurrency: parseInt(answers.provisionedConcurrency, 0),
+    caCerts: answers.caCert || undefined,
     cloudfrontLogBucketArn: answers.cloudfrontLogBucketArn,
     createCMKs: answers.createCMKs,
     retainOnDelete: answers.retainOnDelete,
     ddbDeletionProtection: answers.ddbDeletionProtection,
+    disableS3AccessLogs: advancedSettings.disableS3AccessLogs,
+    logArchiveBucketName: advancedSettings.logArchiveBucketName || undefined,
     vpc: answers.existingVpc
       ? {
           vpcId: answers.vpcId.toLowerCase(),
@@ -2133,6 +2198,10 @@ async function processCreateOptions(options: any, manifestMode: boolean = false)
       ? {
           enabled: answers.bedrockEnable,
           region: answers.bedrockRegion,
+          endpointUrl:
+            answers.bedrockEndpointUrl === ""
+              ? undefined
+              : answers.bedrockEndpointUrl,
           roleArn:
             answers.bedrockRoleArn === "" ? undefined : answers.bedrockRoleArn,
           guardrails: {
@@ -2195,6 +2264,7 @@ async function processCreateOptions(options: any, manifestMode: boolean = false)
         },
       },
       embeddingsModels: [] as ModelConfig[],
+      crossEncodingEnabled: advancedSettings.crossEncodingEnabled || false,
       crossEncoderModels: [] as ModelConfig[],
     },
   };
@@ -2363,7 +2433,10 @@ async function processCreateOptions(options: any, manifestMode: boolean = false)
 }
 
 /**
- * Write deployment-manifest.yaml from the config object + pipeline config
+ * Write deployment-manifest.yaml from the config object + pipeline config.
+ *
+ * Every parameter is covered by the wizard - no values are silently preserved
+ * from an existing manifest. The wizard asks about ALL fields.
  */
 function writeManifest(config: any, pipelineConfig: any): void {
   const manifest: any = {
@@ -2376,12 +2449,15 @@ function writeManifest(config: any, pipelineConfig: any): void {
     createCMKs: config.createCMKs,
     retainOnDelete: config.retainOnDelete,
     ddbDeletionProtection: config.ddbDeletionProtection,
+    disableS3AccessLogs: config.disableS3AccessLogs || false,
   };
 
   // Optional strings
-  if (config.caCert) manifest.caCerts = config.caCert;
+  if (config.caCerts) manifest.caCerts = config.caCerts;
   if (config.cloudfrontLogBucketArn)
     manifest.cloudfrontLogBucketArn = config.cloudfrontLogBucketArn;
+  if (config.logArchiveBucketName)
+    manifest.logArchiveBucketName = config.logArchiveBucketName;
 
   // Advanced / monitoring
   if (config.advancedMonitoring !== undefined)
@@ -2430,8 +2506,9 @@ function writeManifest(config: any, pipelineConfig: any): void {
     if (manifest.bedrock.guardrails && !manifest.bedrock.guardrails.enabled) {
       delete manifest.bedrock.guardrails;
     }
-    // Remove roleArn if empty
+    // Remove empty optional fields
     if (!manifest.bedrock.roleArn) delete manifest.bedrock.roleArn;
+    if (!manifest.bedrock.endpointUrl) delete manifest.bedrock.endpointUrl;
   }
 
   // Nexus
