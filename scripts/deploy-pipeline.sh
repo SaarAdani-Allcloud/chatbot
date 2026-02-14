@@ -363,7 +363,7 @@ fi
 
 if [[ "$SHOULD_RUN_WIZARD" == "true" ]]; then
   section "Step 4/7: Running interactive configuration wizard"
-  node cli/magic-config.js --manifest
+  node dist/cli/magic-config.js --manifest
   ok "Configuration wizard completed"
 else
   section "Step 4/7: Skipping wizard (using existing configuration)"
@@ -403,8 +403,13 @@ if [[ -z "$REGION" ]]; then
     REGION=$(aws configure get region 2>/dev/null || true)
   fi
   if [[ -z "$REGION" ]]; then
-    # Try EC2 metadata (for EC2 instances with IAM roles)
-    REGION=$(curl -s --connect-timeout 2 http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || true)
+    # Try EC2 metadata (IMDSv2 with token, then fall back to IMDSv1)
+    IMDS_TOKEN=$(curl -s --connect-timeout 2 -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null || true)
+    if [[ -n "$IMDS_TOKEN" ]]; then
+      REGION=$(curl -s --connect-timeout 2 -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || true)
+    else
+      REGION=$(curl -s --connect-timeout 2 http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || true)
+    fi
   fi
   if [[ -z "$REGION" ]]; then
     err "Could not determine AWS region. Provide --region or configure it with 'aws configure'"
