@@ -214,15 +214,16 @@ const BedrockGuardrailsSchema = z
     identifier: z
       .string()
       .regex(
-        /^[a-z0-9]+$/,
+        /^[a-z0-9]*$/,
         "Guardrail identifier must contain only lowercase alphanumeric characters"
       )
-      .optional(),
-    version: z.string().optional(),
+      .optional()
+      .or(z.literal("")),
+    version: z.string().optional().or(z.literal("")),
   })
   .refine(
     (data) => {
-      // If enabled, identifier and version are required
+      // If enabled, identifier and version are required (non-empty)
       if (data.enabled) {
         return !!data.identifier && !!data.version;
       }

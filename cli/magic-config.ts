@@ -2424,9 +2424,14 @@ function writeManifest(config: any, pipelineConfig: any): void {
     manifest.cognitoFederation = config.cognitoFederation;
   }
 
-  // Bedrock
+  // Bedrock - omit guardrails sub-object when disabled to avoid validation issues
   if (config.bedrock) {
-    manifest.bedrock = config.bedrock;
+    manifest.bedrock = { ...config.bedrock };
+    if (manifest.bedrock.guardrails && !manifest.bedrock.guardrails.enabled) {
+      delete manifest.bedrock.guardrails;
+    }
+    // Remove roleArn if empty
+    if (!manifest.bedrock.roleArn) delete manifest.bedrock.roleArn;
   }
 
   // Nexus
