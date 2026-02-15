@@ -551,7 +551,7 @@ else
 
   # --- S3 bucket for TF state ---
   if [[ -z "$TF_STATE_BUCKET" ]]; then
-    DEFAULT_TF_BUCKET="${PREFIX}-tf-state-${ACCOUNT_ID}-${REGION}"
+    DEFAULT_TF_BUCKET="$(echo "${PREFIX}" | tr '[:upper:]' '[:lower:]')-tf-state-${ACCOUNT_ID}-${REGION}"
     read -rp "  S3 bucket for Terraform state [${DEFAULT_TF_BUCKET}]: " TF_STATE_BUCKET
     TF_STATE_BUCKET="${TF_STATE_BUCKET:-$DEFAULT_TF_BUCKET}"
   fi

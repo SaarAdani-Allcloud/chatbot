@@ -138,7 +138,7 @@ export class PipelineStack extends cdk.Stack {
                 "npm ci",
                 "npm install -g @aws-amplify/cli",
                 // Authenticate to ECR Public for Docker base images used during asset bundling
-                "aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws",
+                "aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws || echo 'WARNING: ECR public login failed (SCP restriction?). Continuing without authenticated Docker pulls.'",
               ],
             },
             build: {

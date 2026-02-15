@@ -43,18 +43,28 @@ export class PrivateWebsite extends Construct {
     const s3IPs: IpTarget[] = [];
     let vpcEndpointId: string | undefined;
 
+    // When s3VpcEndpointIps are provided, the endpoint is likely in a different
+    // VPC (e.g. shared via Transit Gateway). This flag drives:
+    //  - availabilityZone "all" on IpTarget (required for cross-VPC IPs)
+    //  - extra ALB SG egress rules for each endpoint IP
+    const isManualEndpointIps = !!(
+      props.config.vpc?.s3VpcEndpointIps &&
+      props.config.vpc.s3VpcEndpointIps.length > 0 &&
+      props.config.vpc?.s3VpcEndpointId
+    );
+
     // Check if S3 VPC endpoint IPs and ID are provided in configuration (Manual/Cross-Account scenario)
-    if (props.config.vpc?.s3VpcEndpointIps && 
-        props.config.vpc.s3VpcEndpointIps.length > 0 && 
-        props.config.vpc?.s3VpcEndpointId) {
+    if (isManualEndpointIps) {
       // Scenario C: Full Manual Configuration (both IPs and endpoint ID provided)
       console.log('Using provided S3 VPC endpoint IP addresses and endpoint ID from configuration');
       
-      props.config.vpc.s3VpcEndpointIps.forEach((ipAddress) => {
-        s3IPs.push(new IpTarget(ipAddress, 443));
+      props.config.vpc!.s3VpcEndpointIps!.forEach((ipAddress) => {
+        // Use availabilityZone "all" because the S3 VPC endpoint IPs are
+        // outside this VPC (e.g. shared via Transit Gateway from another VPC).
+        s3IPs.push(new IpTarget(ipAddress, 443, "all"));
       });
 
-      vpcEndpointId = props.config.vpc.s3VpcEndpointId;
+      vpcEndpointId = props.config.vpc!.s3VpcEndpointId;
     } else {
       // Scenario A: Full Auto-Discovery (default)
       // Fall back to scanning/discovering VPC endpoints
@@ -176,6 +186,19 @@ export class PrivateWebsite extends Construct {
       ec2.Peer.ipv4(props.shared.vpc.vpcCidrBlock),
       ec2.Port.tcp(443)
     );
+
+    // When S3 endpoint IPs are manually provided they may be in a different
+    // VPC (cross-account, shared via TGW) whose CIDR is not covered by the
+    // local VPC CIDR.  Add explicit /32 egress rules so the ALB can reach them.
+    if (isManualEndpointIps) {
+      props.config.vpc!.s3VpcEndpointIps!.forEach((ipAddress) => {
+        albSecurityGroup.addEgressRule(
+          ec2.Peer.ipv4(`${ipAddress}/32`),
+          ec2.Port.tcp(443),
+          `Allow HTTPS to S3 VPC endpoint IP ${ipAddress} (cross-VPC/TGW)`
+        );
+      });
+    }
 
     const loadBalancer = new elbv2.ApplicationLoadBalancer(this, "ALB", {
       vpc: props.shared.vpc,

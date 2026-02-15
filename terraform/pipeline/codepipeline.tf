@@ -4,10 +4,16 @@
 # Mirrors the CDK pipeline-stack.ts simplified pipeline.
 # ============================================================
 
+# ── Locals ───────────────────────────────────────────────────
+# S3 bucket names MUST be all-lowercase.
+locals {
+  prefix_lower = lower(var.prefix)
+}
+
 # ── Artifact Bucket ──────────────────────────────────────────
 
 resource "aws_s3_bucket" "artifacts" {
-  bucket_prefix = "${var.prefix}-pipeline-art-"
+  bucket_prefix = "${local.prefix_lower}-pipeline-art-"
   force_destroy = true
 
   tags = {
