@@ -6,35 +6,49 @@
 # AWS GenAI LLM Chatbot. Designed to run on a fresh AL2 EC2
 # instance with an IAM role attached.
 #
+# Supports two pipeline deployment methods:
+#   - CDK (default): deploys the PipelineStack via CDK
+#   - Terraform: applies terraform/pipeline/ module
+#
 # What it does:
-#   1. Installs prerequisites (git, Node.js, npm, Amplify CLI)
+#   1. Installs prerequisites (git, Node.js, npm, AWS CLI,
+#      and Terraform if TF mode is selected)
 #   2. Configures git credential helper for CodeCommit
 #   3. Installs npm dependencies & builds the project
 #   4. Runs interactive configuration wizard (writes manifest + config)
-#   5. Runs CDK bootstrap (if not already done)
-#   6. Deploys the Pipeline stack via CDK (creates CodeCommit
-#      repo, CodePipeline, CodeBuild project, optional SNS topic)
-#   7. Adds CodeCommit as a git remote, commits, and pushes
+#   5. Selects pipeline deployment tool (CDK / Terraform)
+#   6. CDK bootstrap / Terraform backend & tfvars setup
+#   7. Deploys the Pipeline via CDK or Terraform
+#   8. Adds CodeCommit as a git remote, commits, and pushes
 #      everything to CodeCommit, triggering the first execution
 #
 # Usage:
 #   ./scripts/deploy-pipeline.sh [OPTIONS]
 #
 # Options:
-#   --profile <name>    AWS CLI profile (skip if using EC2 IAM role)
-#   --prefix <prefix>   CDK prefix (auto-detected from manifest/config)
-#   --branch <branch>   CodeCommit branch (default: main)
-#   --remote <name>     Git remote name (default: codecommit)
-#   --region <region>   AWS region (default: from AWS config)
-#   --skip-bootstrap    Skip CDK bootstrap step
-#   --skip-prereqs      Skip prerequisite installation
-#   --wizard            Force run the interactive configuration wizard
-#   --skip-wizard       Skip the wizard (use existing manifest/config)
-#   -h, --help          Show this help
+#   --profile <name>       AWS CLI profile (skip if using EC2 IAM role)
+#   --prefix <prefix>      CDK prefix (auto-detected from manifest/config)
+#   --branch <branch>      CodeCommit branch (default: main)
+#   --remote <name>        Git remote name (default: codecommit)
+#   --region <region>      AWS region (default: from AWS config)
+#   --cdk                  Use CDK to deploy the pipeline (default)
+#   --terraform            Use Terraform to deploy the pipeline
+#   --tf-state-bucket <b>  S3 bucket for Terraform state (TF mode only)
+#   --skip-bootstrap       Skip CDK bootstrap step
+#   --skip-prereqs         Skip prerequisite installation
+#   --wizard               Force run the interactive configuration wizard
+#   --skip-wizard          Skip the wizard (use existing manifest/config)
+#   -h, --help             Show this help
 #
 # Examples:
-#   # On EC2 with IAM role (most common):
+#   # On EC2 with IAM role (most common, defaults to CDK):
 #   ./scripts/deploy-pipeline.sh
+#
+#   # Deploy pipeline with Terraform:
+#   ./scripts/deploy-pipeline.sh --terraform
+#
+#   # Deploy with Terraform, providing state bucket:
+#   ./scripts/deploy-pipeline.sh --terraform --tf-state-bucket my-tf-state
 #
 #   # With explicit profile:
 #   ./scripts/deploy-pipeline.sh --profile my-sandbox
@@ -44,7 +58,8 @@
 #
 # Prerequisites (auto-installed if missing):
 #   - git, Node.js >= 18, npm, AWS CLI
-#   - CDK bootstrapped in target account/region
+#   - CDK bootstrapped in target account/region (CDK mode)
+#   - Terraform >= 1.5 (Terraform mode, auto-installed if missing)
 #   - Valid AWS credentials (IAM role on EC2 or AWS profile)
 # ============================================================
 
@@ -74,6 +89,8 @@ REGION=""
 SKIP_BOOTSTRAP=false
 SKIP_PREREQS=false
 RUN_WIZARD=""  # empty = auto-detect, "true" = force, "false" = skip
+DEPLOY_TOOL="" # empty = prompt user, "cdk" or "terraform"
+TF_STATE_BUCKET=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -96,6 +113,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --region)
       REGION="$2"
+      shift 2
+      ;;
+    --cdk)
+      DEPLOY_TOOL="cdk"
+      shift
+      ;;
+    --terraform)
+      DEPLOY_TOOL="terraform"
+      shift
+      ;;
+    --tf-state-bucket)
+      TF_STATE_BUCKET="$2"
       shift 2
       ;;
     --skip-bootstrap)
@@ -156,7 +185,7 @@ info "Detected OS: $OS_ID"
 
 # ── Step 1: Install prerequisites ─────────────────────────────
 if [[ "$SKIP_PREREQS" == "false" ]]; then
-  section "Step 1/7: Installing prerequisites"
+  section "Step 1/8: Installing prerequisites"
 
   # --- Git ---
   if ! command -v git >/dev/null 2>&1; then
@@ -278,7 +307,7 @@ if [[ "$SKIP_PREREQS" == "false" ]]; then
 
   ok "All prerequisites satisfied"
 else
-  section "Step 1/7: Skipping prerequisite installation (--skip-prereqs)"
+  section "Step 1/8: Skipping prerequisite installation (--skip-prereqs)"
 
   # Still validate
   for cmd in git node npm aws; do
@@ -298,7 +327,7 @@ else
 fi
 
 # ── Step 2: Configure git for CodeCommit ──────────────────────
-section "Step 2/7: Configuring git credential helper for CodeCommit"
+section "Step 2/8: Configuring git credential helper for CodeCommit"
 
 # Configure the AWS CodeCommit credential helper
 git config --global credential.helper '!aws codecommit credential-helper $@'
@@ -325,7 +354,7 @@ fi
 ok "Git configured for CodeCommit"
 
 # ── Step 3: Install & Build ──────────────────────────────────
-section "Step 3/7: Installing dependencies & building"
+section "Step 3/8: Installing dependencies & building"
 
 npm ci
 
@@ -362,11 +391,11 @@ else
 fi
 
 if [[ "$SHOULD_RUN_WIZARD" == "true" ]]; then
-  section "Step 4/7: Running interactive configuration wizard"
+  section "Step 4/8: Running interactive configuration wizard"
   node dist/cli/magic-config.js --manifest
   ok "Configuration wizard completed"
 else
-  section "Step 4/7: Skipping wizard (using existing configuration)"
+  section "Step 4/8: Skipping wizard (using existing configuration)"
   if [[ ! -f "deployment-manifest.yaml" ]] && [[ ! -f "bin/config.json" ]]; then
     err "No deployment-manifest.yaml or bin/config.json found. Re-run with --wizard."
     exit 1
@@ -427,37 +456,291 @@ if [[ -z "$ACCOUNT_ID" ]]; then
 fi
 info "AWS Account: $ACCOUNT_ID"
 
-# ── Step 5: CDK Bootstrap ────────────────────────────────────
-if [[ "$SKIP_BOOTSTRAP" == "false" ]]; then
-  section "Step 5/7: Running CDK bootstrap"
+# ── Step 5: Choose pipeline deploy tool ───────────────────────
+section "Step 5/8: Selecting pipeline deployment tool"
 
-  info "Bootstrapping CDK in $ACCOUNT_ID/$REGION..."
-  # shellcheck disable=SC2086
-  npx cdk bootstrap "aws://$ACCOUNT_ID/$REGION" $AWS_PROFILE_ARG
-
-  ok "CDK bootstrap complete"
-else
-  section "Step 5/7: Skipping CDK bootstrap (--skip-bootstrap)"
+if [[ -z "$DEPLOY_TOOL" ]]; then
+  echo ""
+  echo "  How would you like to deploy the CI/CD pipeline?"
+  echo ""
+  echo "    1) CDK  (default) — deploys the PipelineStack via CDK"
+  echo "    2) Terraform      — applies the terraform/pipeline/ module"
+  echo ""
+  read -rp "  Choose [1/2] (default: 1): " TOOL_CHOICE
+  case "$TOOL_CHOICE" in
+    2|terraform|tf)
+      DEPLOY_TOOL="terraform"
+      ;;
+    *)
+      DEPLOY_TOOL="cdk"
+      ;;
+  esac
 fi
 
-# ── Step 6: Deploy Pipeline Stack ─────────────────────────────
-section "Step 6/7: Deploying pipeline stack via CDK"
+ok "Pipeline deploy tool: $(echo "$DEPLOY_TOOL" | tr '[:lower:]' '[:upper:]')"
 
-# shellcheck disable=SC2086
-npx cdk deploy "$PIPELINE_STACK_NAME" --require-approval never $AWS_PROFILE_ARG
+# ── Install Terraform if needed (TF mode only) ───────────────
+install_terraform() {
+  if command -v terraform >/dev/null 2>&1; then
+    ok "Terraform already installed: $(terraform version -json 2>/dev/null | head -1 || terraform version | head -1)"
+    return
+  fi
 
-ok "Pipeline stack deployed"
+  info "Installing Terraform..."
+  case "$OS_ID" in
+    amzn|rhel|centos)
+      sudo yum install -y yum-utils
+      sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
+      sudo yum install -y terraform
+      ;;
+    ubuntu|debian)
+      sudo apt-get update && sudo apt-get install -y gnupg software-properties-common
+      wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg >/dev/null
+      echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+      sudo apt-get update && sudo apt-get install -y terraform
+      ;;
+    macos)
+      if command -v brew >/dev/null 2>&1; then
+        brew tap hashicorp/tap
+        brew install hashicorp/tap/terraform
+      else
+        err "Please install Terraform: https://developer.hashicorp.com/terraform/install"
+        exit 1
+      fi
+      ;;
+    *)
+      err "Cannot auto-install Terraform on this OS. Please install it manually: https://developer.hashicorp.com/terraform/install"
+      exit 1
+      ;;
+  esac
+  ok "Terraform installed: $(terraform version | head -1)"
+}
 
-# ── Step 7: Push to CodeCommit ────────────────────────────────
-section "Step 7/7: Pushing code to CodeCommit"
+if [[ "$DEPLOY_TOOL" == "terraform" ]]; then
+  install_terraform
 
-# Get the CodeCommit clone URL from stack outputs
-# shellcheck disable=SC2086
-CLONE_URL=$(aws cloudformation describe-stacks \
-  --stack-name "$PIPELINE_STACK_NAME" \
-  --region "$REGION" \
-  --query "Stacks[0].Outputs[?OutputKey=='CodeCommitCloneUrlHTTPS'].OutputValue" \
-  --output text $AWS_PROFILE_ARG 2>/dev/null || true)
+  # Terraform uses AWS_PROFILE env var (not --profile flag like AWS CLI)
+  if [[ -n "$AWS_PROFILE_NAME" ]]; then
+    export AWS_PROFILE="$AWS_PROFILE_NAME"
+    info "Exported AWS_PROFILE=$AWS_PROFILE_NAME for Terraform"
+  fi
+fi
+
+# ── Step 6: CDK Bootstrap / Terraform backend + tfvars ────────
+
+if [[ "$DEPLOY_TOOL" == "cdk" ]]; then
+  # ── CDK Bootstrap ──────────────────────────────────────────
+  if [[ "$SKIP_BOOTSTRAP" == "false" ]]; then
+    section "Step 6/8: Running CDK bootstrap"
+
+    info "Bootstrapping CDK in $ACCOUNT_ID/$REGION..."
+    # shellcheck disable=SC2086
+    npx cdk bootstrap "aws://$ACCOUNT_ID/$REGION" $AWS_PROFILE_ARG
+
+    ok "CDK bootstrap complete"
+  else
+    section "Step 6/8: Skipping CDK bootstrap (--skip-bootstrap)"
+  fi
+
+else
+  # ── Terraform backend + tfvars setup ───────────────────────
+  section "Step 6/8: Setting up Terraform backend & generating tfvars"
+
+  TF_DIR="$PROJECT_ROOT/terraform/pipeline"
+  TF_KEY="${PREFIX}/pipeline.tfstate"
+
+  # --- S3 bucket for TF state ---
+  if [[ -z "$TF_STATE_BUCKET" ]]; then
+    DEFAULT_TF_BUCKET="${PREFIX}-tf-state-${ACCOUNT_ID}-${REGION}"
+    read -rp "  S3 bucket for Terraform state [${DEFAULT_TF_BUCKET}]: " TF_STATE_BUCKET
+    TF_STATE_BUCKET="${TF_STATE_BUCKET:-$DEFAULT_TF_BUCKET}"
+  fi
+  info "Terraform state bucket: $TF_STATE_BUCKET"
+
+  # Create the bucket if it doesn't exist
+  # shellcheck disable=SC2086
+  if ! aws s3api head-bucket --bucket "$TF_STATE_BUCKET" $AWS_PROFILE_ARG --region "$REGION" 2>/dev/null; then
+    info "Creating S3 bucket '$TF_STATE_BUCKET' for Terraform state..."
+    # shellcheck disable=SC2086
+    aws s3api create-bucket \
+      --bucket "$TF_STATE_BUCKET" \
+      --region "$REGION" \
+      --create-bucket-configuration LocationConstraint="$REGION" \
+      $AWS_PROFILE_ARG
+
+    # Enable versioning
+    # shellcheck disable=SC2086
+    aws s3api put-bucket-versioning \
+      --bucket "$TF_STATE_BUCKET" \
+      --versioning-configuration Status=Enabled \
+      --region "$REGION" \
+      $AWS_PROFILE_ARG
+
+    # Enable encryption
+    # shellcheck disable=SC2086
+    aws s3api put-bucket-encryption \
+      --bucket "$TF_STATE_BUCKET" \
+      --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' \
+      --region "$REGION" \
+      $AWS_PROFILE_ARG
+
+    # Block public access
+    # shellcheck disable=SC2086
+    aws s3api put-public-access-block \
+      --bucket "$TF_STATE_BUCKET" \
+      --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" \
+      --region "$REGION" \
+      $AWS_PROFILE_ARG
+
+    ok "Created and configured TF state bucket: $TF_STATE_BUCKET"
+  else
+    ok "TF state bucket already exists: $TF_STATE_BUCKET"
+  fi
+
+  # --- Generate terraform.tfvars from manifest ---
+  info "Generating terraform.tfvars from deployment-manifest.yaml..."
+
+  # Extract pipeline-related values from manifest
+  MANIFEST_FILE="$PROJECT_ROOT/deployment-manifest.yaml"
+  if [[ ! -f "$MANIFEST_FILE" ]]; then
+    err "deployment-manifest.yaml not found. Re-run with --wizard."
+    exit 1
+  fi
+
+  # Helper to read yaml values (simple grep-based, works for flat values)
+  yaml_val() {
+    local key="$1"
+    grep "^${key}:" "$MANIFEST_FILE" 2>/dev/null | sed "s/${key}:[[:space:]]*//" | tr -d '"' | tr -d "'" || true
+  }
+
+  # Nested yaml value (e.g. "  existingRepositoryName: foo" under "pipeline:")
+  yaml_nested() {
+    local key="$1"
+    grep "  ${key}:" "$MANIFEST_FILE" 2>/dev/null | sed "s/.*${key}:[[:space:]]*//" | tr -d '"' | tr -d "'" | head -1 || true
+  }
+
+  # Determine repo settings
+  TF_CREATE_NEW_REPO=$(yaml_nested "createNew")
+  TF_CREATE_NEW_REPO="${TF_CREATE_NEW_REPO:-true}"
+  if [[ "$TF_CREATE_NEW_REPO" == "true" ]]; then
+    TF_REPO_NAME=$(yaml_nested "newRepositoryName")
+    TF_REPO_NAME="${TF_REPO_NAME:-aws-genai-llm-chatbot}"
+  else
+    TF_REPO_NAME=$(yaml_nested "existingRepositoryName")
+    TF_REPO_NAME="${TF_REPO_NAME:-aws-genai-llm-chatbot}"
+  fi
+
+  TF_REQUIRE_APPROVAL=$(yaml_nested "requireApproval")
+  TF_REQUIRE_APPROVAL="${TF_REQUIRE_APPROVAL:-true}"
+
+  TF_NOTIFICATION_EMAIL=$(yaml_nested "notificationEmail")
+  TF_NOTIFICATION_EMAIL="${TF_NOTIFICATION_EMAIL:-}"
+
+  TF_BRANCH=$(yaml_nested "branch")
+  TF_BRANCH="${TF_BRANCH:-main}"
+
+  # VPC settings
+  TF_VPC_ID=$(yaml_nested "vpcId")
+  TF_VPC_ID="${TF_VPC_ID:-}"
+
+  # Subnet IDs (need to parse yaml list — only items directly under subnetIds:)
+  TF_SUBNET_IDS=""
+  if [[ -n "$TF_VPC_ID" ]]; then
+    TF_SUBNET_IDS=$(awk '
+      /^  subnetIds:/ { capture=1; next }
+      capture && /^    - / { sub(/^    - /, ""); print; next }
+      capture { capture=0 }
+    ' "$MANIFEST_FILE" | tr -d '"' | tr -d "'" || true)
+  fi
+
+  # Write terraform.tfvars
+  cat > "$TF_DIR/terraform.tfvars" <<TFVARS
+# Auto-generated by deploy-pipeline.sh from deployment-manifest.yaml
+# Generated at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+prefix             = "${PREFIX}"
+region             = "${REGION}"
+create_new_repo    = ${TF_CREATE_NEW_REPO}
+repo_name          = "${TF_REPO_NAME}"
+branch             = "${TF_BRANCH}"
+require_approval   = ${TF_REQUIRE_APPROVAL}
+notification_email = "${TF_NOTIFICATION_EMAIL}"
+vpc_id             = "${TF_VPC_ID}"
+chatbot_stack_name = "${CHATBOT_STACK_NAME}"
+TFVARS
+
+  # Add subnet_ids as a proper list
+  if [[ -n "$TF_SUBNET_IDS" ]]; then
+    # Convert newline-separated list to terraform list format
+    SUBNET_LIST=$(echo "$TF_SUBNET_IDS" | while read -r s; do echo "  \"$s\","; done)
+    cat >> "$TF_DIR/terraform.tfvars" <<TFVARS
+subnet_ids         = [
+${SUBNET_LIST}
+]
+TFVARS
+  else
+    echo 'subnet_ids         = []' >> "$TF_DIR/terraform.tfvars"
+  fi
+
+  ok "Generated $TF_DIR/terraform.tfvars"
+  info "Contents:"
+  cat "$TF_DIR/terraform.tfvars"
+  echo ""
+
+  # Also run CDK bootstrap if not skipped (needed because CodeBuild still runs cdk deploy)
+  if [[ "$SKIP_BOOTSTRAP" == "false" ]]; then
+    info "Running CDK bootstrap (needed for chatbot CDK deploy inside CodeBuild)..."
+    # shellcheck disable=SC2086
+    npx cdk bootstrap "aws://$ACCOUNT_ID/$REGION" $AWS_PROFILE_ARG
+    ok "CDK bootstrap complete"
+  fi
+fi
+
+# ── Step 7: Deploy Pipeline ──────────────────────────────────
+
+if [[ "$DEPLOY_TOOL" == "cdk" ]]; then
+  section "Step 7/8: Deploying pipeline stack via CDK"
+
+  # shellcheck disable=SC2086
+  npx cdk deploy "$PIPELINE_STACK_NAME" --require-approval never $AWS_PROFILE_ARG
+
+  ok "Pipeline stack deployed via CDK"
+
+else
+  section "Step 7/8: Deploying pipeline via Terraform"
+
+  TF_DIR="$PROJECT_ROOT/terraform/pipeline"
+
+  info "Running terraform init..."
+  terraform -chdir="$TF_DIR" init \
+    -backend-config="bucket=$TF_STATE_BUCKET" \
+    -backend-config="key=$TF_KEY" \
+    -backend-config="region=$REGION" \
+    -backend-config="use_lockfile=true"
+
+  info "Running terraform apply..."
+  terraform -chdir="$TF_DIR" apply -auto-approve
+
+  ok "Pipeline deployed via Terraform"
+fi
+
+# ── Step 8: Push to CodeCommit ────────────────────────────────
+section "Step 8/8: Pushing code to CodeCommit"
+
+# Get the CodeCommit clone URL
+if [[ "$DEPLOY_TOOL" == "cdk" ]]; then
+  # From CloudFormation stack outputs
+  # shellcheck disable=SC2086
+  CLONE_URL=$(aws cloudformation describe-stacks \
+    --stack-name "$PIPELINE_STACK_NAME" \
+    --region "$REGION" \
+    --query "Stacks[0].Outputs[?OutputKey=='CodeCommitCloneUrlHTTPS'].OutputValue" \
+    --output text $AWS_PROFILE_ARG 2>/dev/null || true)
+else
+  # From Terraform outputs
+  TF_DIR="$PROJECT_ROOT/terraform/pipeline"
+  CLONE_URL=$(terraform -chdir="$TF_DIR" output -raw codecommit_clone_url_https 2>/dev/null || true)
+fi
 
 if [[ -z "$CLONE_URL" || "$CLONE_URL" == "None" ]]; then
   # Fallback: try to get it from the repo name in the manifest
@@ -543,7 +826,11 @@ ok "Pipeline deployment complete!"
 echo -e "${BOLD}============================================================${NC}"
 echo ""
 info "What just happened:"
-echo "  1. Pipeline stack deployed:  $PIPELINE_STACK_NAME"
+if [[ "$DEPLOY_TOOL" == "cdk" ]]; then
+  echo "  1. Pipeline stack deployed via CDK:  $PIPELINE_STACK_NAME"
+else
+  echo "  1. Pipeline deployed via Terraform:  terraform/pipeline/"
+fi
 echo "  2. Code pushed to CodeCommit → pipeline triggered"
 echo ""
 info "The pipeline will now:"
@@ -562,4 +849,8 @@ info "Future updates — just push to CodeCommit:"
 echo "  git add -A && git commit -m 'your message' && git push $REMOTE_NAME HEAD:$BRANCH"
 echo ""
 info "To re-run this script later (faster, skipping installs):"
-echo "  ./scripts/deploy-pipeline.sh --skip-prereqs --skip-bootstrap"
+if [[ "$DEPLOY_TOOL" == "cdk" ]]; then
+  echo "  ./scripts/deploy-pipeline.sh --cdk --skip-prereqs --skip-bootstrap"
+else
+  echo "  ./scripts/deploy-pipeline.sh --terraform --tf-state-bucket $TF_STATE_BUCKET --skip-prereqs --skip-bootstrap"
+fi

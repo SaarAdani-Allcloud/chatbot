@@ -480,3 +480,10 @@ node_modules
 AmazonQ.md
 .DS_Store
 cdk-exports.json
+
+# Terraform
+terraform/pipeline/.terraform/
+terraform/pipeline/.terraform.lock.hcl
+terraform/pipeline/terraform.tfvars
+terraform/pipeline/*.tfstate
+terraform/pipeline/*.tfstate.backup

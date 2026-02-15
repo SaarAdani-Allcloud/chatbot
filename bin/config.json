@@ -8,8 +8,8 @@
   "createCMKs": false,
   "retainOnDelete": false,
   "ddbDeletionProtection": false,
-  "disableS3AccessLogs": false,
-  "logArchiveBucketName": "",
+  "disableS3AccessLogs": true,
+  "logArchiveBucketName": "logarchive-chatbotbucket-saar1",
   "vpc": {
     "vpcId": "vpc-0bee666b81ca89734",
     "createVpcEndpoints": false,
@@ -69,6 +69,7 @@
       }
     },
     "embeddingsModels": [],
+    "crossEncodingEnabled": false,
     "crossEncoderModels": []
   }
 }
