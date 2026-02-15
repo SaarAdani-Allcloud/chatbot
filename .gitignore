@@ -485,5 +485,6 @@ cdk-exports.json
 terraform/pipeline/.terraform/
 terraform/pipeline/.terraform.lock.hcl
 terraform/pipeline/terraform.tfvars
+terraform/pipeline/backend.hcl
 terraform/pipeline/*.tfstate
 terraform/pipeline/*.tfstate.backup
